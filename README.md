@@ -14,6 +14,7 @@ ESP-IDF v5.5 · 8 ESP32 chips · Any OpenAI-compatible model · Windows
 
 [![Release](https://img.shields.io/github/v/release/san086041-glitch/firmwright?include_prereleases&label=release)](https://github.com/san086041-glitch/firmwright/releases/latest)
 [![CI](https://github.com/san086041-glitch/firmwright/actions/workflows/ci.yml/badge.svg)](https://github.com/san086041-glitch/firmwright/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/san086041-glitch/firmwright)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
 ![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v5.5-E7352C)
 ![Python](https://img.shields.io/badge/core-Python%203.13-3776AB)
@@ -396,5 +397,9 @@ Firmwright 0.1 is an early preview.
 - **ESP-IDF only.** Build, flash, decoding and risk rules are behind a platform adapter, so other toolchains (STM32, PlatformIO) can be added later.
 - **Hardware coverage:** daily use on an ESP32-S3; the other chips are covered by the capability table and QEMU, not yet by real boards.
 - **Models:** OpenAI-compatible APIs only for now. Anthropic, OpenAI Responses and Gemini backends would plug into the same model interface.
+
+## License
+
+[MIT](LICENSE) © 2026 Jian
 
 Credits: `skills/esp-idf-expert-notes` is imported unchanged from [IoT-SkillsBench](https://github.com/iot-agent/iot-skillsbench) (Apache-2.0, see its `LICENSE`).

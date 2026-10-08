@@ -41,6 +41,7 @@
   },
   "author": "Jian <san086041@gmail.com>",
   "homepage": "https://github.com/san086041-glitch/firmwright",
+  "license": "MIT",
   "build": {
     "appId": "dev.firmwright.desktop",
     "productName": "Firmwright",
