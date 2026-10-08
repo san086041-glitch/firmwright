@@ -736,7 +736,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 /* 设置页（2026-10-05） */
 .settings .note { font-size: 12px; color: var(--ink-3); }
 .start-inner.settings { gap: 26px; grid-template-columns: minmax(0, 1fr); }
-.settings-nav { position: sticky; top: 0; z-index: 2; display: flex; gap: 4px; padding: 8px 0; margin: -14px 36px -10px 0;
+.settings-nav { position: sticky; top: 0; z-index: 2; display: flex; gap: 4px; padding: 8px 36px 8px 0; margin: -14px 0 -10px 0;
   overflow-x: auto; scrollbar-width: none; background: var(--bg); border-bottom: 1px solid var(--line); }
 .settings-nav .btn { flex: none; }
 .settings-nav .btn { color: var(--ink-2); }
