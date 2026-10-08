@@ -88,7 +88,7 @@ class McpClient:
         asyncio.create_task(self._drain_stderr())
         res = await self.request("initialize", {
             "protocolVersion": PROTOCOL_VERSION, "capabilities": {},
-            "clientInfo": {"name": "firmwright", "version": "0.1.0"}}, timeout=timeout)
+            "clientInfo": {"name": "firmwright", "version": "0.1.1"}}, timeout=timeout)
         self.server_info = res.get("serverInfo") or {}
         await self.notify("notifications/initialized", {})
         await self.refresh_tools()

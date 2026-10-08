@@ -1,6 +1,6 @@
 [project]
 name = "firmwright"
-version = "0.1.0"
+version = "0.1.1"
 description = "An event-driven desktop agent for embedded development (Python core / sidecar)"
 requires-python = ">=3.12"
 license = "MIT"
