@@ -675,14 +675,21 @@ class Runtime:
             ok = {True: "succeeded", False: "failed", None: "unknown"}[info.last_build_ok]
             lines.append(f"- Project: target {info.target or 'not set'}, built {'yes' if info.built else 'no'}, "
                          f"last build {ok}")
+        fw = None
         if s.checkpoints and s.checkpoints.entries:
             last = s.checkpoints.entries[-1]
             fw = s.checkpoints.firmware_at(last.seq)
             lines.append(f"- Checkpoint: at #{last.seq} ({last.kind})" +
                          (f", last restored to #{last.restored_to}" if last.kind == "restore" else ""))
-            if fw:
-                lines.append(f"- Firmware on the board: flashed in turn {fw.turn} ({fw.scope}), "
-                             f"sha256 {(fw.sha256 or 'unknown')[:12]}")
+        # 板上固件取最近的一次：checkpoint 要到轮末才记，只看它会漏掉本轮刚烧的固件（2026-10-08 对账：第二轮
+        # 71/71 次压缩都缺）；回退重烧只记在 checkpoint 上，所以两边比时间
+        if s.last_flash and (fw is None or s.last_flash.at >= fw.at):
+            fw = s.last_flash
+        if fw:
+            when = f"in turn {fw.turn}" + (" (the current turn)" if s.running and fw.turn == s.trace.turn else "")
+            how = " (re-flashed by a checkpoint restore)" if fw.source == "restore" else ""
+            lines.append(f"- Firmware on the board: flashed {when}{how} at {fw.at} ({fw.scope}), "
+                         f"sha256 {(fw.sha256 or 'unknown')[:12]}")
         if s.services.facts:
             f = s.services.facts
             lines.append(f"- facts.toml: pass_marker={f.pass_marker!r}, fail_marker={f.fail_marker!r}")

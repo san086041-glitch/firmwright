@@ -340,3 +340,48 @@ def test_memory_related_recall_for_chinese_sentence(tmp_path):
     assert [h.title for h in hits] == ["sdkconfig 关键配置"]
     assert m.related("今天天气怎么样") == []
     assert "may be relevant to this task" in m.preface("LED 接的是哪个 GPIO 口").text
+
+
+async def test_state_block_reports_firmware_flashed_this_turn(tmp_path):
+    """2026-10-08 对账：checkpoint 轮末才记，压缩状态块只看它会漏掉本轮刚烧的固件。"""
+    from types import SimpleNamespace
+
+    from firmwright.runtime import Runtime
+    from firmwright.workspace.checkpoint import FirmwareRecord, _now
+
+    s, _, _ = make_session(tmp_path)
+    s.trace.turn = 3
+    rt = SimpleNamespace(metas={}, devices=None, platform=None)
+    old = FirmwareRecord(seq=1, turn=1, sha256="aaaaaaaaaaaaaaaa", at="2026-10-08T01:00:00+00:00")
+    entry = SimpleNamespace(seq=2, kind="turn", restored_to=None)
+    flash = SimpleNamespace(image_sha256="bbbbbbbbbbbbbbbb", scope="app", port="COM3")
+
+    # 没有 checkpointer（非 git 工程）也记下板上固件
+    await s._on_flashed(flash, None)
+    assert s.last_flash and s.last_flash.sha256 == "bbbbbbbbbbbbbbbb" and s._turn_firmware is None
+    s.last_flash = None
+
+    def record_flash(**kw):
+        return FirmwareRecord(seq=2, turn=kw["turn"], sha256=kw["sha256"], at=_now())
+
+    s.checkpoints = SimpleNamespace(entries=[entry], firmware_at=lambda seq: old,  # type: ignore[assignment]
+                                    record_flash=record_flash)
+    assert "sha256 aaaaaaaaaaaa" in Runtime._state_text(rt, s)  # type: ignore[arg-type]
+
+    # 本轮烧录（还没进 checkpoint 的时间线）
+    await s._on_flashed(flash, None)
+    text = Runtime._state_text(rt, s)  # type: ignore[arg-type]
+    assert "sha256 bbbbbbbbbbbb" in text and "flashed in turn 3" in text and "aaaa" not in text
+
+    # 之后的回退重烧（只记在 checkpoint 上）比本会话的烧录新：以回退为准
+    newer = FirmwareRecord(seq=3, turn=3, sha256="cccccccccccccccc", at="2099-01-01T00:00:00+00:00", source="restore")
+    s.checkpoints = SimpleNamespace(entries=[entry], firmware_at=lambda seq: newer)  # type: ignore[assignment]
+    text = Runtime._state_text(rt, s)  # type: ignore[arg-type]
+    assert "sha256 cccccccccccc" in text and "checkpoint restore" in text
+
+
+def make_session(tmp_path):
+    backend = ScriptedBackend([say("x")])
+    s = Session(id="s1", cwd=tmp_path, backend=backend, model="fake", registry=ToolRegistry([ReadFile()]),
+                store=SessionStore(tmp_path / ".sess"))
+    return s, backend, None

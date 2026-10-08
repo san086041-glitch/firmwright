@@ -66,7 +66,7 @@ from ..tools.base import (
     validation_message,
 )
 from ..trace import Trace
-from ..workspace.checkpoint import Checkpointer, FirmwareRecord
+from ..workspace.checkpoint import Checkpointer, FirmwareRecord, _now
 from .prompt import SYSTEM_PROMPT, load_project_rules
 from .store import SessionStore
 
@@ -174,6 +174,7 @@ class Session:
         self.checkpoints: Checkpointer | None = None  # W5：每轮结束记一个点（D05）；不是 git 工程时为 None
         self.readonly: str | None = None  # 会话已合并 / 丢弃：说明文字；不再接受输入
         self._turn_firmware: FirmwareRecord | None = None  # 本轮最后一次烧录
+        self.last_flash: FirmwareRecord | None = None  # 本会话 agent 最近一次烧录（跨轮保留；回退重烧记在 checkpoint 上）
         # ---- W6 上下文工程
         # 第一轮（和压缩之后）注入的内容：项目规则、skill 清单、记忆。运行时会换成完整的版本（context/assembler.py）
         self.preface: Callable[[str], list[ReminderBlock]] = self._default_preface
@@ -388,10 +389,15 @@ class Session:
     async def _on_flashed(self, res: Any, board: Any) -> None:
         """flash 工具成功后回调：存档固件，记到本轮的 checkpoint 上。"""
         if not self.checkpoints:
+            # 没有 checkpoint（非 git 工程）也要知道板上是哪份固件：压缩时的状态块要用。不存档
+            self.last_flash = FirmwareRecord(
+                seq=-1, turn=self.trace.turn, sha256=res.image_sha256, scope=res.scope,
+                chip=getattr(board, "chip", None), board_id=getattr(board, "id", None), port=res.port, at=_now())
             return
         self._turn_firmware = await asyncio.to_thread(
             self.checkpoints.record_flash, turn=self.trace.turn, cwd=self.cwd, sha256=res.image_sha256,
             scope=res.scope, chip=getattr(board, "chip", None), board_id=getattr(board, "id", None), port=res.port)
+        self.last_flash = self._turn_firmware
         self.trace.record("firmware_archived", seq=self._turn_firmware.seq, sha256=res.image_sha256,
                           archive=self._turn_firmware.archive)
 
@@ -640,9 +646,15 @@ class Session:
                                                           "on_flashed": self._on_flashed, "session": self})
 
     async def _execute(self, call: ToolCallBlock, tool: Tool, args: Any, turn_cancel: CancelToken) -> ToolResult:
-        """执行一个工具。interruptible 的工具在有关键事件注入时被打断（D10）。"""
+        """执行一个工具。interruptible 的工具在有关键事件注入时被打断（D10）。
+        烧录（NO_USER_INTERRUPT）连用户"停止"也不打断：杀掉 esptool 会留下烧了一半的固件。还没开始的不再开始，
+        已经开始的做完这一步，轮次在工具结束后的取消检查处停下（2026-10-08）。"""
+        protected = tool.name in NO_USER_INTERRUPT
+        if protected and turn_cancel.cancelled:
+            return ToolResult.error(f"Not executed: {turn_cancel.reason or 'this turn was cancelled'}")
         cancel = CancelToken()
-        watchers: list[asyncio.Task] = [asyncio.create_task(turn_cancel.wait())]
+        # 等 turn_cancel 的任务始终放在第一个：watch() 靠它区分"轮次取消"和"事件打断"
+        watchers: list[asyncio.Task] = [asyncio.create_task(asyncio.Event().wait() if protected else turn_cancel.wait())]
         if tool.caps.interruptible and self.features.events_interrupt:
             watchers.append(asyncio.create_task(self._interrupt.wait()))
 
@@ -664,6 +676,8 @@ class Session:
             watcher.cancel()
             for w in watchers:
                 w.cancel()
+        if protected and turn_cancel.cancelled:
+            self.trace.record("cancel_deferred", id=call.id, name=call.name)
         if cancel.cancelled and cancel.reason == USER_INTERRUPT:
             self.trace.record("user_interrupt", id=call.id, name=call.name)
             note = ("\n(The user stopped this step before it finished. If they sent a note, it is in the next "

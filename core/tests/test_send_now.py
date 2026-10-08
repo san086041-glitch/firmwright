@@ -11,9 +11,10 @@ from test_loop import Wait, make
 from test_paths import setup, sh
 
 from firmwright.model.fake import call, say
-from firmwright.model.types import ReminderBlock
+from firmwright.model.types import ReminderBlock, ToolCallBlock
 from firmwright.permissions.engine import PermissionEngine
-from firmwright.tools.base import Tool, ToolCaps, ToolRegistry, ToolResult
+from firmwright.tools.base import CancelToken, Tool, ToolCaps, ToolRegistry, ToolResult
+from firmwright.trace import read_trace
 
 
 class SlowCmd(Wait):
@@ -63,6 +64,50 @@ async def test_flash_is_never_interrupted(tmp_path):
     await asyncio.wait_for(s.prompt("flash"), 5)
     await t
     assert "flashed" in backend.requests[1].messages[-1].content[0].content[0].text
+
+
+async def test_stop_waits_for_flash_but_cancels_other_steps(tmp_path):
+    """2026-10-08：用户点"停止"（取消整轮）也不杀烧录；同一步里别的工具照常停掉，轮次在这一步之后结束。"""
+    s, backend, _ = make(tmp_path, [call("flash", {"seconds": 0.5}), say("never reached")],
+                         registry=ToolRegistry([FakeFlash()]), mode="always_approve")
+
+    async def user_stops():
+        await asyncio.sleep(0.1)
+        s.cancel("cancelled by the user")
+
+    t = asyncio.create_task(user_stops())
+    r = await asyncio.wait_for(s.prompt("flash"), 5)
+    await t
+    assert r.stop_reason == "cancelled" and len(backend.requests) == 1
+    result = s.history[-1].content[0]
+    assert "flashed" in result.content[0].text and not result.is_error
+    assert any(x["kind"] == "cancel_deferred" for x in read_trace(s.store.trace_path))
+
+    # 对照：不受保护的工具照常被停掉
+    (tmp_path / "b").mkdir()
+    s2, _, _ = make(tmp_path / "b",[call("slow", {"seconds": 30}), say("never reached")],
+                    registry=ToolRegistry([SlowCmd()]))
+    t = asyncio.create_task(user_stops_after(s2))
+    r = await asyncio.wait_for(s2.prompt("search"), 5)
+    await t
+    assert r.stop_reason == "cancelled" and "this turn was cancelled" in s2.history[-1].content[0].content[0].text
+
+
+async def user_stops_after(s, delay: float = 0.1):
+    await asyncio.sleep(delay)
+    s.cancel("cancelled by the user")
+
+
+async def test_flash_not_started_after_stop(tmp_path):
+    """停止之后还没开始的烧录不再开始（比如排在设备锁后面）。"""
+    s, _, _ = make(tmp_path, [say("x")], registry=ToolRegistry([FakeFlash()]), mode="always_approve")
+    cancel = CancelToken()
+    cancel.cancel("cancelled by the user")
+    tool = s.registry.get("flash")
+    assert tool is not None
+    block = ToolCallBlock(id="c1", name="flash", arguments={"seconds": 0.1})
+    res = await s._execute(block, tool, tool.parse(block.arguments), cancel)
+    assert res.is_error and "Not executed" in res.text_content()
 
 
 def test_drive_scan_through_a_variable_asks(tmp_path):
