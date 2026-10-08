@@ -1,0 +1,7 @@
+# 板级事实卡（D18）：验证者和 await_marker 都以它为准
+chip = "esp32s3"
+baud = 115200
+boot_banner = "app_main started"   # 出现它才算启动成功（正则）
+pass_marker = "TEST:.*:PASS"
+fail_marker = ['TEST:.*:FAIL', 'abort\(\)']   # 单引号是 TOML 的字面字符串，反斜杠不用再转义
+boot_window_s = 8

@@ -1,0 +1,704 @@
+/** 设置页：2026-10-05 模型和空闲崩溃策略；2026-10-06 补全（外观、默认权限模式、ESP-IDF 和编译并行数、
+ *  worktree 根目录、权限规则、MCP 服务器、关于 / 数据位置、重启核心）。
+ *  界面里的修改存在 settings.json；config.toml 是用户手写的，那里定义的模型 / 规则 / MCP 服务器在这里只读。
+ *  API Key 只往核心发，存 Windows 凭据管理器；界面拿不回来，只显示"有没有"。 */
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  coreAbout,
+  deleteMcp,
+  deleteModel,
+  loadModelDetail,
+  refreshModels,
+  refreshSettings,
+  saveMcp,
+  saveModel,
+  saveSettings,
+  setDefaultModel,
+  setIdlePolicy,
+  setupStatus,
+  testModel,
+  type ModelDetail,
+  type SetupStatus,
+} from "../actions";
+import { native, type HostInfo, type Json, type Theme } from "../rpc";
+import { useStore } from "../store";
+import { MODES } from "./Chat";
+import { Icon } from "./Icon";
+import { Select } from "./Select";
+import { IdfStep, RestartButton } from "./Setup";
+
+type Effort = "reasoning_effort" | "enable_thinking" | "thinking_budget" | "thinking_type";
+
+export interface Draft {
+  id: string; model: string; baseUrl: string; apiKey: string; contextWindow: string; vision: boolean; reasoning: boolean;
+  effortStyle: Effort;
+}
+
+// 常见的 OpenAI 兼容服务：只预填地址和思考参数的写法，模型名以服务商文档为准
+const PRESETS: { id: string; label: string; baseUrl: string; effortStyle: Effort; reasoning: boolean; hint: string }[] = [
+  { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", effortStyle: "thinking_type", reasoning: true, hint: "e.g. deepseek-chat" },
+  { id: "siliconflow", label: "SiliconFlow", baseUrl: "https://api.siliconflow.cn/v1", effortStyle: "thinking_budget", reasoning: true, hint: "e.g. zai-org/GLM-5.3" },
+  { id: "dashscope", label: "Qwen (DashScope, international)", baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", effortStyle: "enable_thinking", reasoning: true, hint: "e.g. qwen-plus" },
+  { id: "zai", label: "GLM (Z.ai)", baseUrl: "https://api.z.ai/api/paas/v4", effortStyle: "thinking_type", reasoning: true, hint: "e.g. glm-4.6" },
+  { id: "moonshot", label: "Kimi (Moonshot, international)", baseUrl: "https://api.moonshot.ai/v1", effortStyle: "thinking_type", reasoning: true, hint: "e.g. kimi-k2" },
+  { id: "custom", label: "Other OpenAI-compatible", baseUrl: "", effortStyle: "reasoning_effort", reasoning: false, hint: "model name the API expects" },
+];
+
+const EFFORT_TEXT: Record<Effort, string> = {
+  reasoning_effort: "reasoning_effort (OpenAI style)", enable_thinking: "enable_thinking + budget (Qwen)",
+  thinking_budget: "thinking_budget (SiliconFlow)", thinking_type: "thinking: enabled / disabled",
+};
+
+export const EMPTY: Draft = { id: "", model: "", baseUrl: "", apiKey: "", contextWindow: "128000", vision: false, reasoning: false,
+                       effortStyle: "reasoning_effort" };
+
+function toFields(d: Draft): Json {
+  return { model: d.model.trim() || null, base_url: d.baseUrl.trim(), context_window: Number(d.contextWindow) || 128000,
+           vision: d.vision, reasoning: d.reasoning, effort_style: d.effortStyle };
+}
+
+const SECTIONS: [string, string][] = [
+  ["general", "General"], ["models", "Models"], ["idf", "ESP-IDF & builds"], ["workspaces", "Workspaces"],
+  ["permissions", "Permissions"], ["mcp", "MCP servers"], ["about", "About & data"],
+];
+
+const errText = (e: unknown) => String(e instanceof Error ? e.message : e);
+
+export function SettingsPage() {
+  const connected = useStore((s) => s.connected);
+  const [err, setErr] = useState("");
+  const close = () => useStore.setState({ showSettings: false });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // 输入框里按 Esc 不关整页（和新建会话页一致）
+      if (e.key === "Escape" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  // 打开时、以及核心重启后重新连上时，读一次最新设置
+  useEffect(() => { if (connected) void refreshSettings().catch((e) => setErr(errText(e))); }, [connected]);
+  const jump = (id: string) => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  return (
+    <div className="start">
+      <div className="start-inner settings">
+        <div className="start-head">
+          <h2>Settings</h2>
+          <span className="spacer" />
+          <button className="btn ghost sm" onClick={() => useStore.setState({ showSettings: false, showSetup: true })}>Setup guide</button>
+          <button className="btn ghost sm" onClick={close}>Close <span className="kbd">Esc</span></button>
+        </div>
+        <nav className="settings-nav">
+          {SECTIONS.map(([id, label]) => <button key={id} className="btn xs ghost" onClick={() => jump(id)}>{label}</button>)}
+        </nav>
+        {err && <div className="callout error"><Icon name="alert" /><div>{err}</div></div>}
+        <GeneralSection />
+        <ModelsSection />
+        <IdfSection />
+        <WorkspaceSection />
+        <PermissionsSection />
+        <McpSection />
+        <AboutSection />
+      </div>
+    </div>
+  );
+}
+
+function Section({ id, title, note, actions, children }: { id: string; title: string; note?: ReactNode; actions?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="settings-sec" id={`set-${id}`}>
+      <div className="sec-head">
+        <div>
+          <div className="sec-title">{title}</div>
+          {note && <div className="note">{note}</div>}
+        </div>
+        <span className="spacer" />
+        {actions}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** 保存失败时在那一行下面显示原因 */
+function useSaver() {
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const save = async (fields: Json): Promise<boolean> => {
+    setBusy(true);
+    setErr("");
+    try {
+      await saveSettings(fields);
+      return true;
+    } catch (e) {
+      setErr(errText(e));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { err, busy, save, setErr };
+}
+
+// ------------------------------------------------------------------ 通用
+
+const THEMES: { value: Theme; label: string }[] = [
+  { value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" },
+];
+
+function readTheme(): Theme {
+  try {
+    const t = localStorage.getItem("fwr.theme");
+    return t === "light" || t === "dark" ? t : "system";
+  } catch {
+    return "system";
+  }
+}
+
+function GeneralSection() {
+  const settings = useStore((s) => s.settings);
+  const [theme, setTheme] = useState<Theme>(readTheme);
+  const { err, save } = useSaver();
+  const pickTheme = (t: Theme) => {
+    setTheme(t);
+    native.applyTheme(t);
+    try { localStorage.setItem("fwr.theme", t); } catch { /* 存不了就只在这次生效 */ }
+  };
+  return (
+    <Section id="general" title="General">
+      <div className="set-card">
+        <div className="setting-line">
+          <span>Appearance</span>
+          <div className="theme-seg" role="radiogroup">
+            {THEMES.map((t) => (
+              <button key={t.value} role="radio" aria-checked={theme === t.value} className={theme === t.value ? "on" : ""} onClick={() => pickTheme(t.value)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="setting-line">
+          <span>Permission mode for new sessions<div className="note">Each session can still switch modes from its composer.</div></span>
+          <Select variant="field" value={settings.permissionMode ?? "default"} width={260} onChange={(v) => void save({ permissionMode: v })}
+                  options={MODES.map(([k, v, h]) => ({ value: k, label: v, hint: h }))} />
+        </div>
+        <div className="setting-line">
+          <span>When a board crashes while no task is running</span>
+          <Select variant="field" value={settings.idlePolicy ?? "notify"} onChange={(v) => void setIdlePolicy(v as "ignore" | "notify")} width={260}
+                  options={[
+                    { value: "notify", label: "Notify me", hint: "A card with the decoded backtrace; you decide whether the agent handles it" },
+                    { value: "ignore", label: "Ignore", hint: "Crashes outside tasks are only recorded" },
+                  ]} />
+        </div>
+      </div>
+      {err && <div className="callout error"><Icon name="alert" /><div>{err}</div></div>}
+    </Section>
+  );
+}
+
+// ------------------------------------------------------------------ 模型
+
+function ModelsSection() {
+  const [models, setModels] = useState<ModelDetail[]>([]);
+  const [def, setDef] = useState<string | null>(null);
+  const [configPath, setConfigPath] = useState("");
+  const [editing, setEditing] = useState<{ draft: Draft; isNew: boolean } | null>(null);
+  const [tests, setTests] = useState<Record<string, Json | "running">>({});
+  const [err, setErr] = useState("");
+
+  const reload = async () => {
+    const r = await loadModelDetail();
+    setModels(r.models);
+    setDef(r.default);
+    setConfigPath(r.configPath);
+  };
+  useEffect(() => { void reload().catch((e) => setErr(errText(e))); }, []);
+
+  const runTest = async (id: string) => {
+    setTests((t) => ({ ...t, [id]: "running" }));
+    const res = await testModel(id, null, "").catch((e) => ({ ok: false, error: errText(e) }));
+    setTests((t) => ({ ...t, [id]: res }));
+  };
+  const act = (fn: () => Promise<unknown>) => { setErr(""); void fn().then(reload).catch((e) => setErr(errText(e))); };
+
+  return (
+    <Section id="models" title="Models" note="Any OpenAI-compatible API. Keys are stored in the Windows Credential Manager, never in files."
+             actions={!editing && <button className="btn sm primary" onClick={() => setEditing({ draft: { ...EMPTY }, isNew: true })}><Icon name="plus" size={14} />Add model</button>}>
+      {editing?.isNew && <ModelForm draft={editing.draft} isNew onDone={() => { setEditing(null); void reload(); void refreshModels(); }} />}
+      <div className="model-list">
+        {models.length === 0 && <div className="empty">No models yet. Add one to start a session.</div>}
+        {models.map((m) => {
+          const t = tests[m.id];
+          const readonly = m.source === "config.toml";
+          if (editing && !editing.isNew && editing.draft.id === m.id) {
+            return <ModelForm key={m.id} draft={editing.draft} onDone={() => { setEditing(null); void reload(); }} />;
+          }
+          return (
+            <div key={m.id} className="model-row">
+              <div className="main">
+                <div className="name">
+                  <b>{m.id}</b>
+                  {m.id === def && <span className="chip ok">default</span>}
+                  {m.vision && <span className="chip">vision</span>}
+                  {m.reasoning && <span className="chip">reasoning</span>}
+                  {readonly && <span className="chip" title={`Defined in ${configPath}; edit it there`}>config.toml</span>}
+                </div>
+                <div className="sub mono">{m.model} · {hostOf(m.baseUrl)} · {Math.round(m.contextWindow / 1000)}k context</div>
+                <div className={`sub ${m.hasKey ? "" : "warn-text"}`}>
+                  <Icon name="key" size={12} />{m.hasKey ? "API key set" : `No API key found (${m.keyRef})`}
+                </div>
+                {t && t !== "running" && (
+                  <div className={`test-res ${t.ok ? (t.toolCalls ? "ok" : "warn") : "bad"}`}>
+                    <Icon name={t.ok && t.toolCalls ? "check" : "alert"} size={13} />
+                    {t.ok ? (t.toolCalls ? `Connected, tool calling works · ${t.latencyMs} ms` : t.warning) : `Failed: ${t.error}`}
+                  </div>
+                )}
+              </div>
+              <div className="acts">
+                <button className="btn xs" onClick={() => void runTest(m.id)} disabled={t === "running" || !m.hasKey}>
+                  {t === "running" ? <Icon name="refresh" size={12} className="spin" /> : <Icon name="pulse" size={12} />}Test
+                </button>
+                {m.id !== def && <button className="btn xs" onClick={() => act(() => setDefaultModel(m.id))}>Make default</button>}
+                {!readonly && (
+                  <>
+                    <button className="btn xs" disabled={!!editing} onClick={() => setEditing({ isNew: false, draft: {
+                      id: m.id, model: m.model === m.id ? "" : m.model, baseUrl: m.baseUrl, apiKey: "", contextWindow: String(m.contextWindow),
+                      vision: m.vision, reasoning: m.reasoning, effortStyle: m.effortStyle as Effort } })}>
+                      <Icon name="edit" size={12} />Edit
+                    </button>
+                    <button className="btn xs danger" title="Delete" onClick={() => { if (window.confirm(`Delete model ${m.id} and its stored API key?`)) act(() => deleteModel(m.id)); }}>
+                      <Icon name="trash" size={12} />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {configPath && models.some((m) => m.source === "config.toml") && <div className="note">Models marked config.toml are defined in <span className="mono">{configPath}</span> and are read-only here.</div>}
+      {err && <div className="callout error"><Icon name="alert" /><div>{err}</div></div>}
+    </Section>
+  );
+}
+
+// ------------------------------------------------------------------ ESP-IDF 和编译
+
+function IdfSection() {
+  const settings = useStore((s) => s.settings);
+  const [st, setSt] = useState<SetupStatus | null>(null);
+  const { err, save } = useSaver();
+  useEffect(() => { void setupStatus(true).then(setSt).catch(() => undefined); }, []);
+  const cpus: number = settings.cpuCount ?? 8;
+  const jobs = [{ value: "0", label: `Automatic (${settings.buildJobsAuto ?? Math.max(2, Math.floor(cpus / 2))})`, hint: "Half the logical cores, at least 2" },
+                ...Array.from({ length: cpus }, (_, i) => ({ value: String(i + 1), label: `${i + 1}` }))];
+  return (
+    <Section id="idf" title="ESP-IDF & builds">
+      <div className="set-card pad">
+        {st ? <IdfStep st={st} onChanged={setSt} /> : <div className="hint"><Icon name="refresh" size={13} className="spin" /> Looking for ESP-IDF…</div>}
+      </div>
+      <div className="set-card">
+        <div className="setting-line">
+          <span>Parallel build jobs<div className="note">Builds started by the agent only. Lower it if the machine becomes unresponsive while building; takes effect on the next build.</div></span>
+          <Select variant="field" value={String(settings.buildJobs ?? 0)} width={200} onChange={(v) => void save({ buildJobs: Number(v) })} options={jobs} />
+        </div>
+      </div>
+      {err && <div className="callout error"><Icon name="alert" /><div>{err}</div></div>}
+    </Section>
+  );
+}
+
+// ------------------------------------------------------------------ 工作区
+
+function WorkspaceSection() {
+  const settings = useStore((s) => s.settings);
+  const [root, setRoot] = useState<string>(settings.worktreeRoot ?? "");
+  const [saved, setSaved] = useState(false);
+  const { err, busy, save, setErr } = useSaver();
+  useEffect(() => { setRoot(settings.worktreeRoot ?? ""); }, [settings.worktreeRoot]);
+  const changed = root.trim() !== "" && root.trim() !== settings.worktreeRoot;
+  const browse = async () => {
+    const dir = await native.pickFolder();
+    if (dir) { setRoot(dir); setSaved(false); setErr(""); }
+  };
+  return (
+    <Section id="workspaces" title="Workspaces"
+             note="Each session works in its own git worktree under this folder, so your project folder stays untouched until you merge or apply.">
+      <div className="set-card pad">
+        <div className="path-row">
+          <input className="input mono" value={root} spellCheck={false} onChange={(e) => { setRoot(e.target.value); setSaved(false); }}
+                 onKeyDown={(e) => { if (e.key === "Enter" && changed) void save({ worktreeRoot: root }).then(setSaved); }} />
+          <button className="btn sm" onClick={() => void browse()}><Icon name="folder" size={13} />Browse…</button>
+          <button className="btn sm primary" disabled={!changed || busy} onClick={() => void save({ worktreeRoot: root }).then(setSaved)}>Save</button>
+        </div>
+        <div className="note">
+          {saved ? <span className="ok-text"><Icon name="check" size={12} /> Saved. New sessions use this folder; existing sessions stay where they are.</span>
+            : "Keep it short and without spaces: ESP-IDF cannot build in paths with spaces, and Windows limits path length."}
+        </div>
+      </div>
+      {err && <div className="callout error"><Icon name="alert" /><div>{err}</div></div>}
+    </Section>
+  );
+}
+
+// ------------------------------------------------------------------ 权限
+
+type RuleKind = "deny" | "ask" | "allow";
+const RULE_KINDS: { kind: RuleKind; label: string; hint: string }[] = [
+  { kind: "deny", label: "Deny", hint: "Never run. Wins over everything else." },
+  { kind: "ask", label: "Ask", hint: "Always ask, even in Approve all." },
+  { kind: "allow", label: "Allow", hint: "Run without asking." },
+];
+
+function PermissionsSection() {
+  const settings = useStore((s) => s.settings);
+  const rules = settings.rules as Record<RuleKind, { config: string[]; settings: string[] }> | undefined;
+  const [kind, setKind] = useState<RuleKind>("allow");
+  const [text, setText] = useState("");
+  const { err, busy, save } = useSaver();
+  const mine = (k: RuleKind) => rules?.[k]?.settings ?? [];
+  const write = (next: Record<RuleKind, string[]>) => save({ rules: next });
+  const all = (): Record<RuleKind, string[]> => ({ allow: mine("allow"), ask: mine("ask"), deny: mine("deny") });
+  const add = async () => {
+    const r = text.trim();
+    if (!r) return;
+    const next = all();
+    next[kind] = [...next[kind], r];
+    if (await write(next)) setText("");
+  };
+  const remove = (k: RuleKind, r: string) => {
+    const next = all();
+    next[k] = next[k].filter((x) => x !== r);
+    void write(next);
+  };
+  return (
+    <Section id="permissions" title="Permissions"
+             note={<>Rules are <span className="mono">Tool</span> or <span className="mono">Tool(pattern)</span>, for example <span className="mono">shell(idf.py build)</span>, <span className="mono">shell(git:*)</span>, <span className="mono">edit(main/*.c)</span>, <span className="mono">flash</span>. Dangerous hardware operations always ask, and eFuse writes never run, whatever the rules say.</>}>
+      <div className="set-card">
+        {RULE_KINDS.map(({ kind: k, label, hint }) => {
+          const fromToml = rules?.[k]?.config ?? [];
+          const list = mine(k);
+          return (
+            <div key={k} className="rule-group">
+              <div className="rule-hd"><b>{label}</b><span className="note">{hint}</span></div>
+              {fromToml.length + list.length === 0 ? <div className="empty">No rules</div> : (
+                <div className="rule-chips">
+                  {fromToml.map((r) => <span key={`t${r}`} className="chip mono" title="Defined in config.toml (read-only here)">{r}<span className="src">config.toml</span></span>)}
+                  {list.map((r) => (
+                    <span key={r} className="chip mono">{r}
+                      <button className="x" title="Remove" disabled={busy} onClick={() => remove(k, r)}><Icon name="x" size={11} /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div className="rule-add">
+          <Select variant="field" value={kind} width={110} onChange={(v) => setKind(v as RuleKind)}
+                  options={RULE_KINDS.map((x) => ({ value: x.kind, label: x.label }))} />
+          <input className="input mono" placeholder="shell(idf.py build)" value={text} spellCheck={false}
+                 onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void add(); }} />
+          <button className="btn sm" disabled={!text.trim() || busy} onClick={() => void add()}><Icon name="plus" size={13} />Add rule</button>
+        </div>
+      </div>
+      <div className="note">Changes apply right away, including to open sessions.</div>
+      {err && <div className="callout error"><Icon name="alert" /><div>{err}</div></div>}
+    </Section>
+  );
+}
+
+// ------------------------------------------------------------------ MCP
+
+interface McpDraft { name: string; command: string; args: string; env: string; enabled: boolean; isNew: boolean }
+const NO_MCP: McpDraft = { name: "", command: "", args: "", env: "", enabled: true, isNew: true };
+
+function McpSection() {
+  const settings = useStore((s) => s.settings);
+  const servers: Json[] = settings.mcp ?? [];
+  const [draft, setDraft] = useState<McpDraft | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const connected = useStore((s) => s.connected);
+  const pending = dirty || servers.some((s) => s.pending);
+  // 重启核心时（断开）：改动随重启生效，提示条收起
+  useEffect(() => { if (!connected) setDirty(false); }, [connected]);
+  // 服务器在后台连接：还没握手的，过一会儿再读一次状态（最多约 30 秒）
+  const connecting = servers.some((s) => s.enabled && s.status?.alive && !s.status.server && !s.status.error);
+  const [polls, setPolls] = useState(0);
+  useEffect(() => {
+    if (!connecting || polls >= 15) return;
+    const t = setTimeout(() => { setPolls((n) => n + 1); void refreshSettings().catch(() => undefined); }, 2000);
+    return () => clearTimeout(t);
+  }, [connecting, polls, servers]);
+
+  const submit = async () => {
+    if (!draft) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const env: Record<string, string> = {};
+      for (const line of draft.env.split(/\r?\n/)) {
+        const t = line.trim();
+        if (!t) continue;
+        const i = t.indexOf("=");
+        if (i <= 0) throw new Error(`Environment line "${t}" should be NAME=value`);
+        env[t.slice(0, i).trim()] = t.slice(i + 1);
+      }
+      await saveMcp(draft.name, { command: draft.command.trim(), args: draft.args.split(/\r?\n/).map((x) => x.trim()).filter(Boolean),
+                                  env, enabled: draft.enabled });
+      setDraft(null);
+      setDirty(true);
+    } catch (e) {
+      setErr(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async (name: string) => {
+    if (!window.confirm(`Remove MCP server ${name}?`)) return;
+    try {
+      await deleteMcp(name);
+      setDirty(true);
+    } catch (e) {
+      setErr(errText(e));
+    }
+  };
+  const status = (s: Json) => {
+    if (!s.enabled) return <span className="chip">disabled</span>;
+    if (s.pending || !s.status) return <span className="chip warn">after restart</span>;
+    if (s.status.alive && !s.status.server && !s.status.error) return <span className="chip info">connecting…</span>;
+    if (s.status.alive) return <span className="chip ok">{s.status.tools} tool{s.status.tools === 1 ? "" : "s"}</span>;
+    return <span className="chip bad" title={s.status.error ?? ""}>{s.status.error ? "error" : "not connected"}</span>;
+  };
+
+  return (
+    <Section id="mcp" title="MCP servers" note="Extra tools from Model Context Protocol servers (stdio). Servers connect when the core starts."
+             actions={!draft && <button className="btn sm" onClick={() => setDraft({ ...NO_MCP })}><Icon name="plus" size={14} />Add server</button>}>
+      {pending && (
+        <div className="callout info">
+          <Icon name="info" />
+          <div className="restart-row"><span>Server changes take effect after the core restarts.</span><RestartButton /></div>
+        </div>
+      )}
+      {draft && (
+        <div className="model-form">
+          <div className="grid">
+            <label className="field">
+              <span>Name</span>
+              <input className="input mono" value={draft.name} disabled={!draft.isNew} placeholder="espressif-docs" spellCheck={false}
+                     onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+            </label>
+            <label className="field">
+              <span>Command</span>
+              <input className="input mono" value={draft.command} placeholder="uvx / npx / C:\path\server.exe" spellCheck={false}
+                     onChange={(e) => setDraft({ ...draft, command: e.target.value })} />
+            </label>
+            <label className="field">
+              <span>Arguments <span className="faint">(one per line)</span></span>
+              <textarea className="input mono" rows={3} value={draft.args} spellCheck={false} onChange={(e) => setDraft({ ...draft, args: e.target.value })} />
+            </label>
+            <label className="field">
+              <span>Environment <span className="faint">(NAME=value per line)</span></span>
+              <textarea className="input mono" rows={3} value={draft.env} spellCheck={false} onChange={(e) => setDraft({ ...draft, env: e.target.value })} />
+            </label>
+            <label className="check"><input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })} />Enabled</label>
+          </div>
+          <div className="form-acts">
+            <span className="spacer" />
+            <button className="btn sm ghost" onClick={() => { setDraft(null); setErr(""); }} disabled={busy}>Cancel</button>
+            <button className="btn sm primary" onClick={() => void submit()} disabled={busy || !draft.name.trim() || !draft.command.trim()}>
+              <Icon name="check" size={13} />{draft.isNew ? "Add server" : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="model-list">
+        {servers.length === 0 && <div className="empty">No MCP servers. Firmwright's built-in tools cover building, flashing and the serial port.</div>}
+        {servers.map((s) => {
+          const readonly = s.source === "config.toml";
+          return (
+            <div key={s.name} className="model-row">
+              <div className="main">
+                <div className="name"><b>{s.name}</b>{status(s)}{readonly && <span className="chip">config.toml</span>}</div>
+                <div className="sub mono ellipsis" title={[s.command, ...s.args].join(" ")}>{[s.command, ...s.args].join(" ")}</div>
+                {s.status?.error && <div className="sub bad-text">{s.status.error}</div>}
+              </div>
+              {!readonly && (
+                <div className="acts">
+                  <button className="btn xs" disabled={!!draft} onClick={() => setDraft({ name: s.name, command: s.command, args: (s.args ?? []).join("\n"),
+                    env: Object.entries(s.env ?? {}).map(([k, v]) => `${k}=${v}`).join("\n"), enabled: s.enabled, isNew: false })}>
+                    <Icon name="edit" size={12} />Edit
+                  </button>
+                  <button className="btn xs danger" title="Remove" onClick={() => void remove(s.name)}><Icon name="trash" size={12} /></button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {err && <div className="callout error"><Icon name="alert" /><div>{err}</div></div>}
+    </Section>
+  );
+}
+
+// ------------------------------------------------------------------ 关于
+
+function AboutSection() {
+  const connected = useStore((s) => s.connected);
+  const [about, setAbout] = useState<Json | null>(null);
+  const [host, setHost] = useState<HostInfo | null>(null);
+  useEffect(() => {
+    if (!connected) return;
+    void coreAbout().then(setAbout).catch(() => undefined);
+    void native.hostInfo().then(setHost).catch(() => undefined);
+  }, [connected]);
+  const idf = about?.idf?.active;
+  const rows: [string, string][] = [
+    ["Firmwright", host ? `${host.appVersion}${host.packaged ? "" : " (development)"}` : "browser mode"],
+    ["Core", about ? `${about.version} · Python ${about.python}` : "…"],
+    ["ESP-IDF", idf ? `v${idf.version ?? "?"} · ${idf.path}` : (about?.idf?.error ?? "not found")],
+    ...(host ? [["Electron", host.electron] as [string, string]] : []),
+  ];
+  const paths: [string, string | undefined][] = [
+    ["Data folder", about?.paths?.data], ["Sessions", about?.paths?.sessions], ["Worktrees", about?.paths?.worktrees],
+    ["Logs", host?.logDir], ["config.toml", about?.paths?.config],
+  ];
+  return (
+    <Section id="about" title="About & data" actions={<RestartButton label="Restart core" />}>
+      <div className="set-card">
+        <table className="kv">
+          <tbody>
+            {rows.map(([k, v]) => <tr key={k}><th>{k}</th><td className="mono"><div className="kv-val"><span className="ellipsis" title={v}>{v}</span></div></td></tr>)}
+            {paths.map(([k, v]) => (
+              <tr key={k}>
+                <th>{k}</th>
+                <td className="mono">
+                  <div className="kv-val">
+                    <span className="ellipsis" title={v}>{v ?? "—"}</span>
+                    {v && <button className="btn xs ghost" onClick={() => void native.openPath(v)}><Icon name="external" size={12} />Open</button>}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="note">Sessions, memory and settings live in the data folder. API keys are not stored there: they are in the Windows Credential Manager.</div>
+    </Section>
+  );
+}
+
+function hostOf(url: string): string {
+  try { return new URL(url).host; } catch { return url; }
+}
+
+export function ModelForm({ draft: initial, isNew = false, onDone }: { draft: Draft; isNew?: boolean; onDone: () => void }) {
+  const [d, setD] = useState<Draft>(initial);
+  const [preset, setPreset] = useState(isNew ? "deepseek" : "");
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+  const [test, setTest] = useState<Json | null>(null);
+  const set = (patch: Partial<Draft>) => { setD({ ...d, ...patch }); setTest(null); };
+  const p = PRESETS.find((x) => x.id === preset);
+
+  useEffect(() => {
+    if (!isNew || !p) return;
+    setD((cur) => ({ ...cur, baseUrl: p.baseUrl, effortStyle: p.effortStyle, reasoning: p.reasoning }));
+  }, [preset]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const canSave = !!d.id.trim() && !!d.baseUrl.trim() && (!isNew || !!d.apiKey.trim()) && !busy;
+  const save = async () => {
+    setBusy("Saving…");
+    setErr("");
+    try {
+      await saveModel(d.id.trim(), toFields(d), d.apiKey.trim());
+      onDone();
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy("");
+    }
+  };
+  const runTest = async () => {
+    setBusy("Testing…");
+    setTest(null);
+    try {
+      setTest(await testModel(d.id.trim() || "draft", toFields(d), d.apiKey.trim()));
+    } catch (e) {
+      setTest({ ok: false, error: String(e instanceof Error ? e.message : e) });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  return (
+    <div className="model-form">
+      <div className="grid">
+        {isNew && (
+          <label className="field wide">
+            <span>Provider</span>
+            <Select variant="field" value={preset} onChange={setPreset} width={320}
+                    options={PRESETS.map((x) => ({ value: x.id, label: x.label, hint: x.baseUrl || "Enter the base URL yourself" }))} />
+          </label>
+        )}
+        <label className="field">
+          <span>Name in Firmwright</span>
+          <input className="input mono" value={d.id} disabled={!isNew} onChange={(e) => set({ id: e.target.value })} placeholder="deepseek-chat" spellCheck={false} />
+        </label>
+        <label className="field">
+          <span>Model name sent to the API</span>
+          <input className="input mono" value={d.model} onChange={(e) => set({ model: e.target.value })} placeholder={p?.hint ?? "defaults to the name"} spellCheck={false} />
+        </label>
+        <label className="field wide">
+          <span>Base URL</span>
+          <input className="input mono" value={d.baseUrl} onChange={(e) => set({ baseUrl: e.target.value })} placeholder="https://…/v1" spellCheck={false} />
+        </label>
+        <label className="field wide">
+          <span>API key</span>
+          <input className="input mono" type="password" value={d.apiKey} onChange={(e) => set({ apiKey: e.target.value })}
+                 placeholder={isNew ? "sk-…" : "Leave empty to keep the stored key"} autoComplete="off" spellCheck={false} />
+          <span className="note">Stored in the Windows Credential Manager as firmwright/{d.id.trim() || "<name>"}.</span>
+        </label>
+        <label className="field">
+          <span>Context window (tokens)</span>
+          <input className="input mono" inputMode="numeric" value={d.contextWindow} onChange={(e) => set({ contextWindow: e.target.value.replace(/\D/g, "") })} />
+        </label>
+        <div className="field">
+          <span>Capabilities</span>
+          <div className="checks">
+            <label className="check"><input type="checkbox" checked={d.vision} onChange={(e) => set({ vision: e.target.checked })} />Vision (images)</label>
+            <label className="check"><input type="checkbox" checked={d.reasoning} onChange={(e) => set({ reasoning: e.target.checked })} />Reasoning</label>
+          </div>
+        </div>
+        {d.reasoning && (
+          <label className="field wide">
+            <span>How the API controls thinking</span>
+            <Select variant="field" value={d.effortStyle} onChange={(v) => set({ effortStyle: v as Effort })} width={320}
+                    options={(Object.keys(EFFORT_TEXT) as Effort[]).map((k) => ({ value: k, label: EFFORT_TEXT[k] }))} />
+          </label>
+        )}
+      </div>
+      {test && (
+        <div className={`test-res ${test.ok ? (test.toolCalls ? "ok" : "warn") : "bad"}`}>
+          <Icon name={test.ok && test.toolCalls ? "check" : "alert"} size={13} />
+          {test.ok ? (test.toolCalls ? `Connected, tool calling works · ${test.latencyMs} ms` : test.warning) : `Failed: ${test.error}`}
+        </div>
+      )}
+      {err && <div className="callout error"><Icon name="alert" /><div>{err}</div></div>}
+      <div className="form-acts">
+        <span className="hint">{busy}</span>
+        <span className="spacer" />
+        <button className="btn sm ghost" onClick={onDone} disabled={!!busy}>Cancel</button>
+        <button className="btn sm" onClick={() => void runTest()} disabled={!!busy || !d.baseUrl.trim() || (isNew && !d.apiKey.trim())}>
+          <Icon name="pulse" size={13} />Test connection
+        </button>
+        <button className="btn sm primary" onClick={() => void save()} disabled={!canSave}>
+          <Icon name="check" size={13} />{isNew ? "Add model" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}

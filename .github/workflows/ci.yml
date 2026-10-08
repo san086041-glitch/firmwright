@@ -1,0 +1,58 @@
+# 方案 §11：CI 用 GitHub Actions，运行环境为 windows-latest。
+# 需要 ESP-IDF 或真板子的测试在这里会自动跳过（skipif），只跑核心逻辑和界面。
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    name: Python core
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: core/pyproject.toml
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Lint (ruff)
+        run: python -m ruff check .
+      - name: Type check (pyright)
+        run: python -m pyright
+      - name: Tests (pytest)
+        run: python -m pytest -q
+        env:
+          PYTHONUTF8: "1"
+
+  desktop:
+    name: Desktop (Electron + React)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"  # 只做检查和单元测试，不需要 Electron 本体
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Type check (tsc)
+        run: npm run typecheck
+      - name: Lint (oxlint)
+        run: npm run lint
+      - name: Tests (vitest)
+        run: npm test
+      - name: Build
+        run: npm run build

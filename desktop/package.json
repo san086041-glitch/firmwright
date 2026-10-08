@@ -1,0 +1,93 @@
+{
+  "name": "firmwright-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Firmwright: an event-driven desktop agent for embedded development",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "build:main": "tsc -p tsconfig.node.json",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "start": "npm run build && electron .",
+    "bridge": "npm run build:main && node dist-electron/devbridge.js",
+    "dev:web": "vite",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "lint": "oxlint src",
+    "test": "vitest run",
+    "dist:core": "cd ../core && .venv\\Scripts\\python -m PyInstaller packaging/firmwright-core.spec --noconfirm --distpath dist --workpath build/pyinstaller",
+    "dist": "npm run build && electron-builder --win --x64 --publish never"
+  },
+  "dependencies": {
+    "highlight.js": "^11.12.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "oxlint": "^1.87.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3",
+    "ws": "^8.22.0"
+  },
+  "author": "Jian <san086041@gmail.com>",
+  "homepage": "https://github.com/san086041-glitch/firmwright",
+  "build": {
+    "appId": "dev.firmwright.desktop",
+    "productName": "Firmwright",
+    "copyright": "Copyright (c) 2026 Jian",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist-electron/**",
+      "dist/renderer/**",
+      "package.json",
+      "!dist-electron/devbridge.*",
+      "!**/node_modules/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../core/dist/firmwright-core",
+        "to": "core"
+      }
+    ],
+    "asar": true,
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Firmwright-${version}-win-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Firmwright",
+      "artifactName": "Firmwright-Setup-${version}.${ext}"
+    }
+  }
+}

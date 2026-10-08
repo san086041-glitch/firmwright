@@ -1,0 +1,44 @@
+# 开发期的应用数据（会话、记忆、串口日志、凭据引用）：只在本机
+dev-home/
+
+# 内部文档只留在本机（2026-10-06 用户决定：仓库只放代码和应用本身）
+/CLAUDE.md
+/HANDOFF.md
+/implementation-notes.md
+/docs/
+/.claude/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.pyright/
+
+# ESP-IDF 工程的编译产物（examples / eval 的基础工程）
+build/
+# 例外：桌面端打包资源（图标和生成脚本），不是编译产物
+!/desktop/build/
+sdkconfig.old
+managed_components/
+dependencies.lock
+
+# 密钥和本机配置
+.env
+.env.*
+*.pem
+
+# 日志 / 系统文件
+*.log
+Thumbs.db
+.DS_Store
+
+# 发布构建产物（PyInstaller 的核心、electron-builder 的安装包）
+/core/dist/
+
+# 评测代码不开源（2026-10-08 用户决定）：只留本机
+/eval/
+/core/firmwright/eval/
+/scripts/eval_*.py
