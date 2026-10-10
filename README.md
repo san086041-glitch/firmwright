@@ -40,7 +40,7 @@ ESP-IDF v5.5 · 8 ESP32 chips · Any OpenAI-compatible model · Windows
 
 </div>
 
-> **Current release: 0.1.1 (Early Preview).** Windows x64 only. The installer is not code-signed yet.
+> **Current release: 0.1.2 (Early Preview).** Windows x64 only. The installer is not code-signed yet.
 
 ---
 
@@ -326,8 +326,8 @@ On first launch Firmwright finds your ESP-IDF installation (EIM, the classic ins
 
 | Platform | Architecture | Package |
 | --- | --- | --- |
-| Windows 10 / 11 | x64 | `Firmwright-Setup-0.1.1.exe` (installer, per-user, no admin rights) |
-| Windows 10 / 11 | x64 | `Firmwright-0.1.1-win-x64.zip` (portable) |
+| Windows 10 / 11 | x64 | `Firmwright-Setup-0.1.2.exe` (installer, per-user, no admin rights) |
+| Windows 10 / 11 | x64 | `Firmwright-0.1.2-win-x64.zip` (portable) |
 
 **Requirements:** ESP-IDF v5.5 · git · an API key for a model with tool calling.
 

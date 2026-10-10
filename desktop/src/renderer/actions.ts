@@ -135,7 +135,7 @@ export async function boot(): Promise<void> {
   const info = await rpc.request("initialize", {
     protocolVersion: 1,
     clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-    clientInfo: { name: "firmwright-desktop", version: "0.1.1" },
+    clientInfo: { name: "firmwright-desktop", version: "0.1.2" },
   });
   useStore.setState({ connected: true, coreInfo: info, bootErrors: [] });
   // 各项分别加载：一项失败不影响别的，失败原因显示在界面上（不再静默显示"还没有会话"）
