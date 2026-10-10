@@ -1,4 +1,5 @@
 /** 界面动作：调用核心的 ACP 方法，并把核心推来的消息写进 store。 */
+import { t, tc } from "./i18n";
 import { native, rpc, type Json } from "./rpc";
 import {
   emptyView,
@@ -31,7 +32,7 @@ rpc.handlers({
           if (kind === "_fwr/session_ended") void refreshSessions().then(() => refreshCheckpoints(sid));
           // 后台子 agent 做完了、agent 却空着：系统通知，点开回到这个会话决定要不要继续
           if (kind === "_fwr/subagent" && params.update.awaitingParent)
-            void native.notify("Background sub-agent finished", params.update.description ?? "", `subagent:${sid}`);
+            void native.notify(t("Background sub-agent finished"), params.update.description ?? "", `subagent:${sid}`);
         }
         break;
       }
@@ -86,7 +87,7 @@ rpc.handlers({
       const ask: HumanAsk = { rpcId: id, title: params.title, instructions: params.instructions, kind: params.kind,
                               boardId: params.board_id };
       updateView(sid, (v) => ({ ...v, items: [...v.items, { kind: "human", id: `h${id}`, ask }] }));
-      native.notify("Firmwright needs your hands", params.title, `human:${sid}`);
+      native.notify(t("Firmwright needs your hands"), tc(params.title), `human:${sid}`);
       return;
     }
     return Promise.resolve(null);
@@ -125,7 +126,7 @@ function onIdleCrash(ev: DeviceEvent, sessionId: string | null): void {
   const list = (events[ev.board_id] ?? []).map((e) => (e.id === ev.id ? ev : e));
   useStore.setState({ events: { ...events, [ev.board_id]: list } });
   const board = useStore.getState().boards[ev.board_id];
-  void native.notify(`${board?.alias ?? ev.board_id} crashed`, ev.summary, sessionId ? `crash:${sessionId}` : undefined);
+  void native.notify(t("{board} crashed", { board: board?.alias ?? ev.board_id }), tc(ev.summary), sessionId ? `crash:${sessionId}` : undefined);
 }
 
 // ------------------------------------------------------------------ 启动 / 重启
@@ -298,6 +299,7 @@ export async function newSession(opts: { cwd: string; boardId?: string | null; m
   if (meta.isolation === "worktree") {
     const carried: string[] = meta.carried ?? [];
     items.push({ kind: "notice", id: `wt${Date.now()}`, tone: "info",
+                 // 存英文、显示时 tc()：模板在 i18n/zh-core.ts
                  text: `The agent works in a copy of your project at ${meta.worktree} (branch ${meta.branch}, from ${meta.target_branch ?? "the current commit"}`
                    + `${carried.length ? `, plus your ${carried.length} uncommitted change${carried.length === 1 ? "" : "s"}` : ""}). `
                    + "Your project folder is not touched until you finish: apply the changes to it, merge them as a commit, or discard." });

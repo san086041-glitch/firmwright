@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useStore } from "../store";
 import { Icon } from "./Icon";
 
@@ -9,11 +10,11 @@ export function PanelToggles({ inline = false }: { inline?: boolean }) {
   const crashed = Object.values(boards).some((b) => b.state === "crashed");
   const btns = (
     <>
-      <button className="btn ghost sm icon-only only-narrow-sidebar" title="Sessions" onClick={() => useStore.setState({ sidebarOpen: true })}>
+      <button className="btn ghost sm icon-only only-narrow-sidebar" title={t("Sessions")} onClick={() => useStore.setState({ sidebarOpen: true })}>
         <Icon name="list" size={15} />
       </button>
       {devicesAvailable && (
-        <button className={`btn ghost sm icon-only ${devicesOpen ? "on" : ""}`} title={devicesOpen ? "Hide devices" : "Show devices"}
+        <button className={`btn ghost sm icon-only ${devicesOpen ? "on" : ""}`} title={devicesOpen ? t("Hide devices") : t("Show devices")}
                 onClick={() => useStore.setState({ devicesOpen: !devicesOpen })} style={crashed ? { color: "var(--red)" } : undefined}>
           <Icon name="chip" size={15} />
         </button>

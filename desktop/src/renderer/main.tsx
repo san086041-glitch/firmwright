@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { getLang } from "./i18n";
 import { native, rpc } from "./rpc";
 import { useStore } from "./store";
 import "./styles.css";
@@ -12,5 +13,6 @@ try {
   const t = localStorage.getItem("fwr.theme");
   if (t === "light" || t === "dark") native.applyTheme(t);
 } catch { /* 隐私模式等：跟随系统 */ }
+document.documentElement.lang = getLang() === "zh" ? "zh-CN" : "en";
 
 createRoot(document.getElementById("root")!).render(<App />);

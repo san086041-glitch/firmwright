@@ -10,6 +10,7 @@ import {
   restoreCheckpoint,
   sessionDiff,
 } from "../actions";
+import { t, tc, tx } from "../i18n";
 import { native, RpcError, type Json } from "../rpc";
 import { useStore, type Checkpoint } from "../store";
 import { DiffViewer } from "./Diff";
@@ -18,10 +19,10 @@ import { Icon } from "./Icon";
 import { Select } from "./Select";
 
 function label(e: Checkpoint): string {
-  if (e.kind === "restore") return `Restored to #${e.restored_to}`;
-  if (e.kind === "base") return "Session start";
-  if (e.kind === "manual") return "Unrecorded changes";
-  return `End of turn ${e.turn}`;
+  if (e.kind === "restore") return t("Restored to #{seq}", { seq: e.restored_to });
+  if (e.kind === "base") return t("Session start");
+  if (e.kind === "manual") return t("Unrecorded changes");
+  return t("End of turn {n}", { n: e.turn });
 }
 
 /** checkpoint 时间线：每轮一个点，烧过固件的点是菱形。点一下可以回退代码，并选择要不要把当时的固件烧回去。 */
@@ -38,8 +39,8 @@ export function CheckpointStrip({ sid }: { sid: string }) {
   const shown = entries.filter((e) => e.kind !== "restore" && (e.kind !== "turn" || e.changed || e.firmware));
   return (
     <div className="subbar" ref={ref}>
-      <span className="lbl" title="A checkpoint is recorded at the end of every turn. Only points with changes or a flash are shown. Diamonds mark flashed firmware.">
-        <Icon name="history" size={13} />Checkpoints
+      <span className="lbl" title={t("A checkpoint is recorded at the end of every turn. Only points with changes or a flash are shown. Diamonds mark flashed firmware.")}>
+        <Icon name="history" size={13} />{t("Checkpoints")}
       </span>
       <div className="ckpt-dots">
         {shown.map((e, i) => (
@@ -47,14 +48,14 @@ export function CheckpointStrip({ sid }: { sid: string }) {
             {i > 0 && <span className="line" />}
             <button
               className={`pt ${e.firmware ? "fw" : ""} ${e.seq === at ? "at" : ""} ${pick === e.seq ? "picked" : ""}`}
-              title={`#${e.seq} · ${label(e)}${e.prompt ? ` · ${e.prompt}` : ""}${e.changed ? ` · ${e.files.length} files +${e.added} −${e.deleted}` : ""}${e.firmware ? ` · flashed ${e.firmware.sha256?.slice(0, 8) ?? ""}` : ""}`}
+              title={`#${e.seq} · ${label(e)}${e.prompt ? ` · ${e.prompt}` : ""}${e.changed ? ` · ${t("{n} files", { n: e.files.length })} +${e.added} −${e.deleted}` : ""}${e.firmware ? ` · ${t("flashed {sha}", { sha: e.firmware.sha256?.slice(0, 8) ?? "" })}` : ""}`}
               onClick={() => setPick(pick === e.seq ? null : e.seq)}
             />
           </span>
         ))}
       </div>
       <span className="spacer" />
-      <span className="faint" style={{ fontSize: 11.5 }}>{shown.length} point{shown.length === 1 ? "" : "s"}</span>
+      <span className="faint" style={{ fontSize: 11.5 }}>{t(shown.length === 1 ? "{n} point" : "{n} points", { n: shown.length })}</span>
       {pick !== null && entries[pick] && (
         <RestorePopover sid={sid} e={entries[pick]} canReflash={!!state.canReflash} busy={status !== "idle"}
                         isCurrent={pick === at} onClose={() => setPick(null)} />
@@ -81,7 +82,7 @@ function RestorePopover({ sid, e, canReflash, busy, isCurrent, onClose }:
     setMsg("");
     try {
       const res = await restoreCheckpoint(sid, e.seq, reflash && fwOk && canReflash);
-      if (res.flash && !res.flash.ok) setMsg(`Code restored; reflashing failed: ${res.flash.summary}`);
+      if (res.flash && !res.flash.ok) setMsg(t("Code restored; reflashing failed: {why}", { why: tc(res.flash.summary) }));
       else onClose();
     } catch (x) {
       setMsg(String(x instanceof Error ? x.message : x));
@@ -95,37 +96,40 @@ function RestorePopover({ sid, e, canReflash, busy, isCurrent, onClose }:
         <b>#{e.seq} · {label(e)}</b>
         <span className="spacer" />
         <span className="chip mono" title={e.commit}>{e.commit.slice(0, 8)}</span>
-        <button className="btn ghost sm icon-only" onClick={onClose} aria-label="Close"><Icon name="x" size={14} /></button>
+        <button className="btn ghost sm icon-only" onClick={onClose} aria-label={t("Close")}><Icon name="x" size={14} /></button>
       </div>
       {e.prompt && <div className="q">“{e.prompt}”</div>}
       {e.changed && (
         <div>
-          {e.files.length} file{e.files.length === 1 ? "" : "s"} changed in this turn (<span style={{ color: "var(--add)" }}>+{e.added}</span>{" "}
-          <span style={{ color: "var(--del)" }}>−{e.deleted}</span>): <span className="mono">{e.files.slice(0, 6).join(", ")}{e.files.length > 6 ? "…" : ""}</span>
+          {tx(e.files.length === 1 ? "{n} file changed in this turn ({stats}): {files}" : "{n} files changed in this turn ({stats}): {files}", {
+            n: e.files.length,
+            stats: <><span style={{ color: "var(--add)" }}>+{e.added}</span>{" "}<span style={{ color: "var(--del)" }}>−{e.deleted}</span></>,
+            files: <span className="mono">{e.files.slice(0, 6).join(", ")}{e.files.length > 6 ? "…" : ""}</span>,
+          })}
         </div>
       )}
       <div className="fw">
         <Icon name="bolt" size={12} />{" "}
         {fw ? (
-          <>Firmware on the board at this point: flashed in turn {fw.turn}, sha256 <span className="mono">{fw.sha256?.slice(0, 12) ?? "unknown"}</span>
-            {!fw.archive && " (archive pruned)"}</>
-        ) : "Nothing had been flashed before this point."}
+          <>{tx("Firmware on the board at this point: flashed in turn {turn}, sha256 {sha}", { turn: fw.turn, sha: <span className="mono">{fw.sha256?.slice(0, 12) ?? t("unknown")}</span> })}
+            {!fw.archive && ` ${t("(archive pruned)")}`}</>
+        ) : t("Nothing had been flashed before this point.")}
       </div>
       {isCurrent ? (
         <>
-          <div className="hint">This is the current state.</div>
+          <div className="hint">{t("This is the current state.")}</div>
           {/* 代码已经是这个点，但板子上的固件可能不是（回退时重烧失败、板子掉线……）：允许只重烧 */}
           {fwOk && (
             <div className="actions">
-              {!canReflash && <span className="err" style={{ flex: 1 }}>No board is bound to this session, so it cannot be reflashed.</span>}
-              {msg && <span className="err" style={{ flex: 1 }}>{msg}</span>}
+              {!canReflash && <span className="err" style={{ flex: 1 }}>{t("No board is bound to this session, so it cannot be reflashed.")}</span>}
+              {msg && <span className="err" style={{ flex: 1 }}>{tc(msg)}</span>}
               <button className="btn sm" disabled={!canReflash || busy || working}
                       onClick={async () => {
                         setWorking(true);
                         setMsg("");
                         try {
                           const res = await restoreCheckpoint(sid, e.seq, true);
-                          if (res.flash && !res.flash.ok) setMsg(`Reflashing failed: ${res.flash.summary}`);
+                          if (res.flash && !res.flash.ok) setMsg(t("Reflashing failed: {why}", { why: tc(res.flash.summary) }));
                           else onClose();
                         } catch (x) {
                           setMsg(String(x instanceof Error ? x.message : x));
@@ -133,7 +137,7 @@ function RestorePopover({ sid, e, canReflash, busy, isCurrent, onClose }:
                           setWorking(false);
                         }
                       }}>
-                <Icon name="bolt" size={13} />{working ? "Reflashing…" : "Reflash this firmware"}
+                <Icon name="bolt" size={13} />{working ? t("Reflashing…") : t("Reflash this firmware")}
               </button>
             </div>
           )}
@@ -142,34 +146,36 @@ function RestorePopover({ sid, e, canReflash, busy, isCurrent, onClose }:
         <>
           <label className={`check ${!(fwOk && canReflash) ? "disabled" : ""}`}>
             <input type="checkbox" checked={reflash} disabled={!(fwOk && canReflash)} onChange={(x) => setReflash(x.target.checked)} />
-            Also reflash the board with that firmware
+            {t("Also reflash the board with that firmware")}
           </label>
           {/* 不能重烧时把原因写出来（原来只在鼠标悬停提示里，真机上用户以为点了没反应） */}
           {!(fwOk && canReflash) && (
             <div className="hint warn-text">
-              {!canReflash ? "Reflashing is unavailable: no board is bound to this session right now (pick the board in the header first)."
-                : "Reflashing is unavailable: no firmware was archived at this point."}
+              {!canReflash ? t("Reflashing is unavailable: no board is bound to this session right now (pick the board in the header first).")
+                : t("Reflashing is unavailable: no firmware was archived at this point.")}
             </div>
           )}
           {!preview ? (
-            <div className="hint">Checking what restoring would change…</div>
+            <div className="hint">{t("Checking what restoring would change…")}</div>
           ) : (
             <div className={preview.delete > 0 || preview.links?.length ? "restore-impact warn" : "restore-impact"}>
-              Restoring will <b>delete {preview.delete}</b> file{preview.delete === 1 ? "" : "s"}, change {preview.modify} and bring back {preview.add}.
+              {tx("Restoring will {del}, change {modify} and bring back {add}.", {
+                del: <b>{t(preview.delete === 1 ? "delete {n} file" : "delete {n} files", { n: preview.delete })}</b>, modify: preview.modify, add: preview.add,
+              })}
               {preview.delete > 0 && (
-                <div className="mono files">{preview.deleteFiles.slice(0, 8).join(", ")}{preview.delete > 8 ? `, … (${preview.delete - 8} more)` : ""}</div>
+                <div className="mono files">{preview.deleteFiles.slice(0, 8).join(", ")}{preview.delete > 8 ? `, … ${t("({n} more)", { n: preview.delete - 8 })}` : ""}</div>
               )}
               {preview.links?.length > 0 && (
-                <div>Directory links in the working directory are removed first (only the link, not what it points to): <span className="mono">{preview.links.join(", ")}</span></div>
+                <div>{tx("Directory links in the working directory are removed first (only the link, not what it points to): {links}", { links: <span className="mono">{preview.links.join(", ")}</span> })}</div>
               )}
             </div>
           )}
-          <div className="hint">Restoring changes files only; the conversation is kept and the agent is told on its next turn. The current state is recorded first, so you can come back. The build directory is not restored.</div>
+          <div className="hint">{t("Restoring changes files only; the conversation is kept and the agent is told on its next turn. The current state is recorded first, so you can come back. The build directory is not restored.")}</div>
           <div className="actions">
-            {msg && <span className="err" style={{ flex: 1 }}>{msg}</span>}
+            {msg && <span className="err" style={{ flex: 1 }}>{tc(msg)}</span>}
             <button className={`btn sm ${preview?.delete > 0 ? "danger" : "primary"}`} onClick={() => void go()} disabled={busy || working || !preview}
-                    title={busy ? "The session is running; wait for it to finish" : ""}>
-              <Icon name="history" size={13} />{working ? "Restoring…" : "Restore to here"}
+                    title={busy ? t("The session is running; wait for it to finish") : ""}>
+              <Icon name="history" size={13} />{working ? t("Restoring…") : t("Restore to here")}
             </button>
           </div>
         </>
@@ -221,58 +227,58 @@ export function FinishDialog({ sid, onClose }: { sid: string; onClose: () => voi
 
   return (
     <div className="modal-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal wide ${showPatch ? "xwide" : ""}`} role="dialog" aria-label="Finish session">
+      <div className={`modal wide ${showPatch ? "xwide" : ""}`} role="dialog" aria-label={t("Finish session")}>
         <div className="modal-head">
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h3>Finish “{meta?.title}”</h3>
-            <p>Branch <code>{meta?.branch}</code> in worktree <code>{meta?.worktree}</code>. Everything changed since the session started:</p>
+            <h3>{t("Finish “{title}”", { title: meta?.title })}</h3>
+            <p>{tx("Branch {branch} in worktree {wt}. Everything changed since the session started:", { branch: <code>{meta?.branch}</code>, wt: <code>{meta?.worktree}</code> })}</p>
           </div>
-          <button className="btn ghost sm icon-only" onClick={onClose} aria-label="Close"><Icon name="x" size={15} /></button>
+          <button className="btn ghost sm icon-only" onClick={onClose} aria-label={t("Close")}><Icon name="x" size={15} /></button>
         </div>
         <div className="modal-body">
-          {running && <div className="callout warn"><Icon name="alert" /><div>The session is running. Wait for it to finish, or stop it, before merging or discarding.</div></div>}
+          {running && <div className="callout warn"><Icon name="alert" /><div>{t("The session is running. Wait for it to finish, or stop it, before merging or discarding.")}</div></div>}
           {!diff ? (
-            <div className="empty">Reading changes…</div>
+            <div className="empty">{t("Reading changes…")}</div>
           ) : files.length === 0 ? (
-            <div className="empty">No changes.</div>
+            <div className="empty">{t("No changes.")}</div>
           ) : (
             <div className="finish-files">
               <div className="bar">
-                <b>{files.length} file{files.length === 1 ? "" : "s"}</b>
+                <b>{t(files.length === 1 ? "{n} file" : "{n} files", { n: files.length })}</b>
                 <span style={{ color: "var(--add)" }}>+{diff.added}</span>
                 <span style={{ color: "var(--del)" }}>−{diff.deleted}</span>
                 <span className="spacer" />
-                <button className="btn ghost xs" onClick={() => setShowPatch(!showPatch)}>{showPatch ? "Show file list" : "Show full diff"}</button>
+                <button className="btn ghost xs" onClick={() => setShowPatch(!showPatch)}>{showPatch ? t("Show file list") : t("Show full diff")}</button>
               </div>
               {!showPatch && <ul>{files.slice(0, 40).map((f) => <li key={f}>{f}</li>)}</ul>}
-              {showPatch && <div className="finish-diff"><DiffViewer diff={diff.patch} />{diff.truncated && <div className="hint" style={{ padding: 8 }}>(Too long; only the first 2 MB is shown. The exported patch is complete.)</div>}</div>}
+              {showPatch && <div className="finish-diff"><DiffViewer diff={diff.patch} />{diff.truncated && <div className="hint" style={{ padding: 8 }}>{t("(Too long; only the first 2 MB is shown. The exported patch is complete.)")}</div>}</div>}
             </div>
           )}
 
           <div className="grid2" style={{ gridTemplateColumns: "1fr 2fr" }}>
             <label className="field">
-              <span>Merge into branch</span>
-              <Select variant="field" value={target} onChange={setTarget} placeholder="Choose a branch" icon={<Icon name="branch" size={13} />}
+              <span>{t("Merge into branch")}</span>
+              <Select variant="field" value={target} onChange={setTarget} placeholder={t("Choose a branch")} icon={<Icon name="branch" size={13} />}
                       options={branches.map((b) => ({ value: b, label: b }))} />
             </label>
             <label className="field">
-              <span>Commit message</span>
+              <span>{t("Commit message")}</span>
               <input className="input" value={message} onChange={(e) => setMessage(e.target.value)} />
             </label>
           </div>
           <div className="hint">
-            <b>Apply to project folder</b> writes the changes into <code>{meta?.repo_root}</code> as uncommitted edits, so you can review them in your editor and commit yourself.
-            {carried > 0 && <> The session started from your {carried} uncommitted change{carried === 1 ? "" : "s"}, so this is the recommended way to finish.</>}
-            {" "}<b>Merge</b> creates one commit on the target branch, authored by your git identity (fast-forward when possible).
-            Either way, conflicts change nothing. Untracked files copied into the worktree (such as sdkconfig) are not merged; applying and the exported patch include them.
+            {tx("{apply} writes the changes into {root} as uncommitted edits, so you can review them in your editor and commit yourself.", { apply: <b>{t("Apply to project folder")}</b>, root: <code>{meta?.repo_root}</code> })}
+            {carried > 0 && <> {t(carried === 1 ? "The session started from your {n} uncommitted change, so this is the recommended way to finish." : "The session started from your {n} uncommitted changes, so this is the recommended way to finish.", { n: carried })}</>}
+            {" "}{tx("{merge} creates one commit on the target branch, authored by your git identity (fast-forward when possible).", { merge: <b>{t("Merge")}</b> })}
+            {" "}{t("Either way, conflicts change nothing. Untracked files copied into the worktree (such as sdkconfig) are not merged; applying and the exported patch include them.")}
           </div>
 
           {err && (
             <div className="callout error">
               <Icon name="alert" />
               <div>
-                {err.text}
-                {err.conflicts?.length ? <div>Conflicting files: {err.conflicts.join(", ")}. Export a patch and resolve by hand, or resolve in your project and try again.</div> : null}
+                {tc(err.text)}
+                {err.conflicts?.length ? <div>{t("Conflicting files: {files}. Export a patch and resolve by hand, or resolve in your project and try again.", { files: err.conflicts.join(", ") })}</div> : null}
               </div>
             </div>
           )}
@@ -280,9 +286,9 @@ export function FinishDialog({ sid, onClose }: { sid: string; onClose: () => voi
             <div className="callout info">
               <Icon name="download" />
               <div>
-                Patch exported ({exported.files.length} files, {Math.round(exported.bytes / 1024)} KB): <code>{exported.path}</code>{" "}
-                <button className="btn ghost xs" onClick={() => void native.showItem(exported.path)}>Show in folder</button>
-                <div className="hint">Apply it from the repository root with <code>git apply &lt;patch&gt;</code>. The worktree is kept until you discard it.</div>
+                {tx("Patch exported ({n} files, {kb} KB): {path}", { n: exported.files.length, kb: Math.round(exported.bytes / 1024), path: <code>{exported.path}</code> })}{" "}
+                <button className="btn ghost xs" onClick={() => void native.showItem(exported.path)}>{t("Show in folder")}</button>
+                <div className="hint">{tx("Apply it from the repository root with {cmd}. The worktree is kept until you discard it.", { cmd: <code>git apply &lt;patch&gt;</code> })}</div>
               </div>
             </div>
           )}
@@ -290,26 +296,26 @@ export function FinishDialog({ sid, onClose }: { sid: string; onClose: () => voi
         <div className="modal-foot">
           {confirmDiscard ? (
             <>
-              <span className="err" style={{ flex: 1 }}>Discard? The worktree, branch {meta?.branch} and its checkpoints will be deleted. This cannot be undone.</span>
-              <button className="btn" onClick={() => setConfirmDiscard(false)}>Keep</button>
+              <span className="err" style={{ flex: 1 }}>{t("Discard? The worktree, branch {branch} and its checkpoints will be deleted. This cannot be undone.", { branch: meta?.branch })}</span>
+              <button className="btn" onClick={() => setConfirmDiscard(false)}>{t("Keep")}</button>
               <button className="btn danger" disabled={!!busy || running} onClick={() => void act("discard", () => discardSession(sid))}>
-                <Icon name="trash" size={14} />{busy === "discard" ? "Deleting…" : "Discard"}
+                <Icon name="trash" size={14} />{busy === "discard" ? t("Deleting…") : t("Discard")}
               </button>
             </>
           ) : (
             <>
-              <button className="btn danger" disabled={!!busy || running} onClick={() => setConfirmDiscard(true)}><Icon name="trash" size={14} />Discard…</button>
+              <button className="btn danger" disabled={!!busy || running} onClick={() => setConfirmDiscard(true)}><Icon name="trash" size={14} />{t("Discard…")}</button>
               <span className="spacer" />
               <button className="btn" disabled={!!busy || files.length === 0} onClick={() => void act("export", () => exportPatch(sid))}>
-                <Icon name="download" size={14} />{busy === "export" ? "Exporting…" : "Export patch"}
+                <Icon name="download" size={14} />{busy === "export" ? t("Exporting…") : t("Export patch")}
               </button>
               <button className={`btn ${carried ? "" : "primary"}`} disabled={!!busy || running || !target || files.length === 0}
                       onClick={() => void act("merge", () => mergeSession(sid, target, message.trim()))}>
-                <Icon name="merge" size={14} />{busy === "merge" ? "Merging…" : `Merge into ${target || "…"}`}
+                <Icon name="merge" size={14} />{busy === "merge" ? t("Merging…") : t("Merge into {branch}", { branch: target || "…" })}
               </button>
               <button className={`btn ${carried ? "primary" : ""}`} disabled={!!busy || running || files.length === 0}
                       onClick={() => void act("apply", () => applySession(sid))}>
-                <Icon name="check" size={14} />{busy === "apply" ? "Applying…" : "Apply to project folder"}
+                <Icon name="check" size={14} />{busy === "apply" ? t("Applying…") : t("Apply to project folder")}
               </button>
             </>
           )}

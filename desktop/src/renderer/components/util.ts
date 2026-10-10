@@ -1,4 +1,5 @@
 /** 界面通用的小函数：数字 / 时间格式、工具卡片的参数摘要、路径缩写。 */
+import { locale, t, tc } from "../i18n";
 import type { Json } from "../rpc";
 import type { IconName } from "./Icon";
 
@@ -20,16 +21,16 @@ export function fmtDuration(ms: number | undefined): string {
 }
 
 /** "3m ago" / "2h ago" / "Oct 3" */
-export function ago(t: number | string | undefined): string {
-  if (!t) return "";
-  const ms = typeof t === "number" ? (t < 1e12 ? t * 1000 : t) : Date.parse(t);
+export function ago(when: number | string | undefined): string {
+  if (!when) return "";
+  const ms = typeof when === "number" ? (when < 1e12 ? when * 1000 : when) : Date.parse(when);
   if (!Number.isFinite(ms)) return "";
   const s = Math.max(0, (Date.now() - ms) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  if (s < 86400 * 7) return `${Math.floor(s / 86400)}d ago`;
-  return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (s < 60) return t("just now");
+  if (s < 3600) return t("{n}m ago", { n: Math.floor(s / 60) });
+  if (s < 86400) return t("{n}h ago", { n: Math.floor(s / 3600) });
+  if (s < 86400 * 7) return t("{n}d ago", { n: Math.floor(s / 86400) });
+  return new Date(ms).toLocaleDateString(locale(), { month: "short", day: "numeric" });
 }
 
 export function baseName(p: string): string {
@@ -62,17 +63,17 @@ export function toolSummary(name: string, input: Json, title: string): string {
   const a = input ?? {};
   switch (name) {
     case "shell": return a.description || a.command || "";
-    case "read_file": return [a.path, a.pages ? `pages ${a.pages}` : "", a.query ? `“${a.query}”` : ""].filter(Boolean).join(" · ");
-    case "grep": return `/${a.pattern ?? ""}/${a.path && a.path !== "." ? ` in ${a.path}` : ""}${a.glob ? ` (${a.glob})` : ""}`;
+    case "read_file": return [a.path, a.pages ? t("pages {p}", { p: a.pages }) : "", a.query ? `“${a.query}”` : ""].filter(Boolean).join(" · ");
+    case "grep": return `/${a.pattern ?? ""}/${a.path && a.path !== "." ? ` ${t("in {path}", { path: a.path })}` : ""}${a.glob ? ` (${a.glob})` : ""}`;
     case "list_dir": return `${a.path ?? "."}${a.pattern ? ` ${a.pattern}` : ""}`;
     case "flash": return a.scope ? `scope ${a.scope}` : "app";
-    case "await_marker": return a.expect ? `expect /${a.expect}/` : "expected marker from facts.toml";
+    case "await_marker": return a.expect ? t("expect /{re}/", { re: a.expect }) : t("expected marker from facts.toml");
     case "read_log": return [a.log_ref, a.grep ? `/${a.grep}/` : "", a.tail ? `tail ${a.tail}` : ""].filter(Boolean).join(" · ");
     case "set_target": return a.chip ?? "";
-    case "diagnose_crash": return a.event_id ?? "latest crash";
+    case "diagnose_crash": return a.event_id ?? t("latest crash");
     case "ask_human": return a.title ?? "";
-    case "spawn_subagent": return `${a.subagent_type ?? "general"}${a.background ? " · background" : ""} · ${a.description ?? ""}`;
-    case "check_subagents": return `${a.id ?? "all"}${a.wait_s ? ` · wait ${a.wait_s} s` : ""}`;
+    case "spawn_subagent": return `${a.subagent_type ?? "general"}${a.background ? ` · ${t("background")}` : ""} · ${a.description ?? ""}`;
+    case "check_subagents": return `${a.id ?? t("all")}${a.wait_s ? ` · ${t("wait {s} s", { s: a.wait_s })}` : ""}`;
     case "stop_subagent": return a.id ?? "";
     case "goal_report": return a.status ?? "";
     case "skill": return a.name ?? "";
@@ -80,7 +81,7 @@ export function toolSummary(name: string, input: Json, title: string): string {
     case "memory_search": return a.query ?? "";
     default: {
       const rest = title.startsWith(name) ? title.slice(name.length).trim() : title;
-      return rest;
+      return tc(rest);
     }
   }
 }

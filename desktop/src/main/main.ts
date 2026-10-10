@@ -135,8 +135,9 @@ sidecar.on("exit", (code) => send("host:event", { type: "sidecar_exit", code }))
 
 ipcMain.on("acp:send", (_e, msg) => sidecar.send(msg));
 ipcMain.handle("host:logs", () => logLines.slice(-500));
-ipcMain.handle("native:pickFolder", async () => {
-  const res = await dialog.showOpenDialog(win!, { properties: ["openDirectory"], title: "Choose a project folder" });
+// 对话框标题由界面传（界面语言，2026-10-10）
+ipcMain.handle("native:pickFolder", async (_e, title?: string) => {
+  const res = await dialog.showOpenDialog(win!, { properties: ["openDirectory"], title: title || "Choose a project folder" });
   return res.canceled ? null : res.filePaths[0];
 });
 ipcMain.handle("native:notify", (_e, opts: { title: string; body: string; tag?: string }) => {

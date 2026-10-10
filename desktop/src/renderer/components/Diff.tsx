@@ -1,6 +1,7 @@
 /** diff 视图（2026-10-05）：并排 / 统一两种显示、行号、语法高亮、行内改动标记、文件列表。
  *  不用 Monaco（几 MB、要配 worker）：自己解析 diff（diffparse.ts）+ highlight.js 核心和这个项目用得到的几种语言。 */
 import hljs from "highlight.js/lib/core";
+import { t, useLang } from "../i18n";
 import bash from "highlight.js/lib/languages/bash";
 import c from "highlight.js/lib/languages/c";
 import cmake from "highlight.js/lib/languages/cmake";
@@ -72,7 +73,7 @@ export function DiffViewer({ diff }: { diff: string }) {
     try { localStorage.setItem("fwr.diffMode", m); } catch { /* 隐私模式等：只是不记住 */ }
   };
   const jump = (i: number) => body.current?.querySelector(`[data-file="${i}"]`)?.scrollIntoView({ block: "start" });
-  if (files.length === 0) return <div className="empty">No textual changes.</div>;
+  if (files.length === 0) return <div className="empty">{t("No textual changes.")}</div>;
   return (
     <div className="dv">
       <div className="dv-side">
@@ -87,8 +88,8 @@ export function DiffViewer({ diff }: { diff: string }) {
       <div className="dv-main">
         <div className="dv-bar">
           <span className="seg">
-            <button className={mode === "split" ? "on" : ""} onClick={() => pick("split")}>Side by side</button>
-            <button className={mode === "unified" ? "on" : ""} onClick={() => pick("unified")}>Unified</button>
+            <button className={mode === "split" ? "on" : ""} onClick={() => pick("split")}>{t("Side by side")}</button>
+            <button className={mode === "unified" ? "on" : ""} onClick={() => pick("unified")}>{t("Unified")}</button>
           </span>
         </div>
         <div className="dv-body" ref={body}>
@@ -114,6 +115,7 @@ function dirOf(p: string): string {
 }
 
 const FileDiff = memo(function FileDiff({ f, idx, mode, compact = false }: { f: DiffFile; idx: number; mode: "split" | "unified"; compact?: boolean }) {
+  useLang();
   const total = f.hunks.reduce((n, h) => n + h.lines.length, 0);
   const [open, setOpen] = useState(total <= BIG);
   const lang = languageOf(f.path);
@@ -126,7 +128,7 @@ const FileDiff = memo(function FileDiff({ f, idx, mode, compact = false }: { f: 
         {!compact && <span className="n"><span className="a">+{f.added}</span> <span className="d">−{f.deleted}</span></span>}
       </button>
       {open ? (
-        f.status === "binary" ? <div className="dv-note">Binary file; not shown.</div>
+        f.status === "binary" ? <div className="dv-note">{t("Binary file; not shown.")}</div>
           : f.hunks.map((h, hi) => (
             <div key={hi} className="dv-hunk">
               {h.header && <div className="dv-hh mono">{h.header}</div>}
@@ -134,7 +136,7 @@ const FileDiff = memo(function FileDiff({ f, idx, mode, compact = false }: { f: 
             </div>
           ))
       ) : (
-        <button className="dv-note link-like" onClick={() => setOpen(true)}>{total} lines changed; click to show</button>
+        <button className="dv-note link-like" onClick={() => setOpen(true)}>{t("{n} lines changed; click to show", { n: total })}</button>
       )}
     </section>
   );

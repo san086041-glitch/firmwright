@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { identifyBoard, loadSerialTail, refreshSize, rescanBoards, resetBoard, simCrash, simPlug, updateBoard } from "../actions";
+import { locale, t, tc, tk } from "../i18n";
 import { useStore, type Board, type DeviceEvent } from "../store";
 import { FrameRow, IdleCrashCard } from "./Cards";
 import { Icon } from "./Icon";
@@ -7,7 +8,7 @@ import { Select } from "./Select";
 import { fmtBytes } from "./util";
 
 const STATE_TEXT: Record<string, string> = {
-  disconnected: "Offline", idle: "Idle", flashing: "Flashing", running: "Running", crashed: "Crashed", busy: "Busy / download mode",
+  disconnected: tk("Offline"), idle: tk("Idle"), flashing: tk("Flashing"), running: tk("Running"), crashed: tk("Crashed"), busy: tk("Busy / download mode"),
 };
 const STATE_CHIP: Record<string, string> = { crashed: "bad", disconnected: "warn", busy: "warn", flashing: "info", running: "ok", idle: "" };
 
@@ -35,12 +36,12 @@ export function DeviceColumn() {
   return (
     <aside className="devices">
       <header>
-        <Icon name="chip" size={16} />Devices <span className="count">{list.length}</span>
+        <Icon name="chip" size={16} />{t("Devices")} <span className="count">{list.length}</span>
         <span className="spacer" />
-        <button className="btn ghost sm" title="Scan the serial ports again" onClick={() => void rescan()} disabled={scanning}>
-          <Icon name="refresh" size={13} className={scanning ? "spin" : ""} />Rescan
+        <button className="btn ghost sm" title={t("Scan the serial ports again")} onClick={() => void rescan()} disabled={scanning}>
+          <Icon name="refresh" size={13} className={scanning ? "spin" : ""} />{t("Rescan")}
         </button>
-        <button className="btn ghost sm icon-only" title="Hide devices" onClick={() => useStore.setState({ devicesOpen: false })}>
+        <button className="btn ghost sm icon-only" title={t("Hide devices")} onClick={() => useStore.setState({ devicesOpen: false })}>
           <Icon name="x" size={14} />
         </button>
       </header>
@@ -55,7 +56,7 @@ export function DeviceColumn() {
       {list.length === 0 && (
         <div className="dev-empty">
           <Icon name="usb" size={20} />
-          No boards detected. Plug an ESP32-series board (ESP32, S2, S3, C2, C3, C6, H2 or P4) into this PC with a data cable and it shows up here within a second. Boards with a USB-UART bridge (CP210x / CH340) need its driver installed. If it does not appear, click Rescan.
+          {t("No boards detected. Plug an ESP32-series board (ESP32, S2, S3, C2, C3, C6, H2 or P4) into this PC with a data cable and it shows up here within a second. Boards with a USB-UART bridge (CP210x / CH340) need its driver installed. If it does not appear, click Rescan.")}
         </div>
       )}
       {focused && boards[focused] && <BoardDetail board={boards[focused]} sid={current} />}
@@ -93,34 +94,34 @@ function BoardCard({ b, mine, focused, onFocus }: { b: Board; mine: boolean; foc
                    onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
           </span>
         ) : (
-          <span className="name" title="Double-click to rename" onDoubleClick={() => setEditing(true)}>{b.alias}</span>
+          <span className="name" title={t("Double-click to rename")} onDoubleClick={() => setEditing(true)}>{b.alias}</span>
         )}
         <ChipBadge chip={b.chip} />
-        <span className={`chip ${STATE_CHIP[b.state] ?? ""}`}>{STATE_TEXT[b.state] ?? b.state}</span>
+        <span className={`chip ${STATE_CHIP[b.state] ?? ""}`}>{STATE_TEXT[b.state] ? t(STATE_TEXT[b.state]) : b.state}</span>
       </div>
       <div className="sub">
-        <span>{b.chip ?? "unknown chip"}</span>·<span className="mono">{b.port ?? "—"}</span>
+        <span>{b.chip ?? t("unknown chip")}</span>·<span className="mono">{b.port ?? "—"}</span>
         {b.state !== "disconnected" && (
           <button className="btn ghost xs" onClick={identify} disabled={identifying}
-                  title="Read the chip model, MAC and flash size with esptool. This resets the board.">
-            {identifying ? "Identifying…" : b.chip ? "Re-identify" : "Identify"}
+                  title={t("Read the chip model, MAC and flash size with esptool. This resets the board.")}>
+            {identifying ? t("Identifying…") : b.chip ? t("Re-identify") : t("Identify")}
           </button>
         )}
-        {(b.link === "usb_serial_jtag" || (!b.link && b.usb_jtag)) && <span className="link-kind" title="Connected through the chip's own USB-Serial-JTAG: no driver needed; the port re-enumerates after flashing"><Icon name="usb" size={12} />USB-JTAG</span>}
-        {b.link === "usb_otg" && <span className="link-kind" title="Connected through the chip's own USB-OTG port (logs need the USB CDC console)"><Icon name="usb" size={12} />USB-OTG</span>}
-        {b.link === "uart_bridge" && <span className="link-kind" title="Connected through a USB-UART bridge chip (CP210x / CH340 / FTDI)"><Icon name="bridge" size={12} />UART bridge</span>}
-        {!b.stable_id && <span title={"No reliable USB serial number; moving it to another USB port makes it look like a new board" + (b.mac ? "" : ". Identify it once so Firmwright can recognize it by MAC.")} style={{ color: "var(--amber)" }}>· port-based ID</span>}
+        {(b.link === "usb_serial_jtag" || (!b.link && b.usb_jtag)) && <span className="link-kind" title={t("Connected through the chip's own USB-Serial-JTAG: no driver needed; the port re-enumerates after flashing")}><Icon name="usb" size={12} />USB-JTAG</span>}
+        {b.link === "usb_otg" && <span className="link-kind" title={t("Connected through the chip's own USB-OTG port (logs need the USB CDC console)")}><Icon name="usb" size={12} />USB-OTG</span>}
+        {b.link === "uart_bridge" && <span className="link-kind" title={t("Connected through a USB-UART bridge chip (CP210x / CH340 / FTDI)")}><Icon name="bridge" size={12} />{t("UART bridge")}</span>}
+        {!b.stable_id && <span title={b.mac ? t("No reliable USB serial number; moving it to another USB port makes it look like a new board") : t("No reliable USB serial number; moving it to another USB port makes it look like a new board. Identify it once so Firmwright can recognize it by MAC.")} style={{ color: "var(--amber)" }}>· {t("port-based ID")}</span>}
       </div>
-      {idErr && <div className="sub err" onClick={(e) => { e.stopPropagation(); setIdErr(""); }}>{idErr}</div>}
+      {idErr && <div className="sub err" onClick={(e) => { e.stopPropagation(); setIdErr(""); }}>{tc(idErr)}</div>}
       <div className="sub">
-        <span className={`owner ${mine ? "mine" : ""}`}>{owner ? (mine ? "This session" : `Session “${owner.title}”`) : "Not bound"}</span>
+        <span className={`owner ${mine ? "mine" : ""}`}>{owner ? (mine ? t("This session") : t("Session “{title}”", { title: owner.title })) : t("Not bound")}</span>
         <Select value={b.idle_policy ?? ""} width={240}
                 onChange={(v) => void updateBoard(b.id, { idle_policy: (v || null) as Board["idle_policy"] })}
-                title="What to do when this board crashes while no task is running (overrides the global setting)"
+                title={t("What to do when this board crashes while no task is running (overrides the global setting)")}
                 options={[
-                  { value: "", label: "Idle crash: default", hint: "Follow the global setting" },
-                  { value: "notify", label: "Idle crash: notify", hint: "Show a card with the decoded backtrace" },
-                  { value: "ignore", label: "Idle crash: ignore", hint: "Only record it in the event list" },
+                  { value: "", label: t("Idle crash: default"), hint: t("Follow the global setting") },
+                  { value: "notify", label: t("Idle crash: notify"), hint: t("Show a card with the decoded backtrace") },
+                  { value: "ignore", label: t("Idle crash: ignore"), hint: t("Only record it in the event list") },
                 ]} />
       </div>
     </div>
@@ -129,20 +130,20 @@ function BoardCard({ b, mine, focused, onFocus }: { b: Board; mine: boolean; foc
 
 // 芯片徽标（2026-10-06，界面改进第 12 项）：型号缩写 + 按 CPU 架构着色。和 core/firmwright/platform/esp_idf/chips.py 一致
 const CHIP_INFO: Record<string, [string, "xtensa" | "riscv", string]> = {
-  esp32: ["ESP32", "xtensa", "Xtensa LX6 dual-core · Wi-Fi + Bluetooth Classic/LE"],
-  esp32s2: ["S2", "xtensa", "Xtensa LX7 single-core · Wi-Fi · USB-OTG"],
-  esp32s3: ["S3", "xtensa", "Xtensa LX7 dual-core · Wi-Fi + BLE · USB-Serial-JTAG"],
-  esp32c2: ["C2", "riscv", "RISC-V single-core · Wi-Fi + BLE"],
-  esp32c3: ["C3", "riscv", "RISC-V single-core · Wi-Fi + BLE · USB-Serial-JTAG"],
-  esp32c6: ["C6", "riscv", "RISC-V · Wi-Fi 6 + BLE + 802.15.4 · USB-Serial-JTAG"],
-  esp32h2: ["H2", "riscv", "RISC-V · BLE + 802.15.4 (no Wi-Fi) · USB-Serial-JTAG"],
-  esp32p4: ["P4", "riscv", "RISC-V dual-core · no radio · USB-Serial-JTAG"],
+  esp32: ["ESP32", "xtensa", tk("Xtensa LX6 dual-core · Wi-Fi + Bluetooth Classic/LE")],
+  esp32s2: ["S2", "xtensa", tk("Xtensa LX7 single-core · Wi-Fi · USB-OTG")],
+  esp32s3: ["S3", "xtensa", tk("Xtensa LX7 dual-core · Wi-Fi + BLE · USB-Serial-JTAG")],
+  esp32c2: ["C2", "riscv", tk("RISC-V single-core · Wi-Fi + BLE")],
+  esp32c3: ["C3", "riscv", tk("RISC-V single-core · Wi-Fi + BLE · USB-Serial-JTAG")],
+  esp32c6: ["C6", "riscv", tk("RISC-V · Wi-Fi 6 + BLE + 802.15.4 · USB-Serial-JTAG")],
+  esp32h2: ["H2", "riscv", tk("RISC-V · BLE + 802.15.4 (no Wi-Fi) · USB-Serial-JTAG")],
+  esp32p4: ["P4", "riscv", tk("RISC-V dual-core · no radio · USB-Serial-JTAG")],
 };
 
 function ChipBadge({ chip }: { chip: string | null }) {
   const info = chip ? CHIP_INFO[chip] : undefined;
-  if (!info) return <span className="chip-badge unknown" title="Chip not identified yet: shown after the next boot log, or click Identify">?</span>;
-  return <span className={`chip-badge ${info[1]}`} title={`${chip} · ${info[2]}`}>{info[0]}</span>;
+  if (!info) return <span className="chip-badge unknown" title={t("Chip not identified yet: shown after the next boot log, or click Identify")}>?</span>;
+  return <span className={`chip-badge ${info[1]}`} title={`${chip} · ${t(info[2])}`}>{info[0]}</span>;
 }
 
 function BoardDetail({ board, sid }: { board: Board; sid: string | null }) {
@@ -164,20 +165,20 @@ function BoardDetail({ board, sid }: { board: Board; sid: string | null }) {
       <div className="term">
         <div className="term-bar">
           <span className="tabs">
-            <button className={tab === "serial" ? "on" : ""} onClick={() => setTab("serial")}>Serial</button>
-            <button className={tab === "events" ? "on" : ""} onClick={() => setTab("events")}>Events{events?.length ? ` · ${events.length}` : ""}</button>
+            <button className={tab === "serial" ? "on" : ""} onClick={() => setTab("serial")}>{t("Serial")}</button>
+            <button className={tab === "events" ? "on" : ""} onClick={() => setTab("events")}>{t("Events")}{events?.length ? ` · ${events.length}` : ""}</button>
           </span>
           <span className="spacer" />
           <span className="faint ellipsis" style={{ fontSize: 11.5, marginRight: 4 }}>{board.alias}</span>
           {tab === "serial" && (
             <button className="btn ghost xs" onClick={() => setFrozen(frozen ? null : (lines ?? []).slice())}
-                    title={frozen ? "Show live output again" : "Freeze the view to read it; capture and crash detection keep running"}>
-              <Icon name={frozen ? "play" : "pause"} size={12} />{frozen ? "Resume" : "Pause view"}
+                    title={frozen ? t("Show live output again") : t("Freeze the view to read it; capture and crash detection keep running")}>
+              <Icon name={frozen ? "play" : "pause"} size={12} />{frozen ? t("Resume") : t("Pause view")}
             </button>
           )}
         </div>
         {tab === "serial" && frozen && (
-          <div className="term-note">View paused. Capture and crash detection keep running; Resume shows the latest output.</div>
+          <div className="term-note">{t("View paused. Capture and crash detection keep running; Resume shows the latest output.")}</div>
         )}
         {tab === "serial" && !frozen && !(lines ?? []).some((l) => l.trim()) ? <SerialEmpty board={board} />
           : tab === "serial" ? <SerialView lines={frozen ?? lines ?? []} follow={!frozen} /> : <EventList events={events ?? []} />}
@@ -194,8 +195,8 @@ function SerialEmpty({ board }: { board: Board }) {
     return (
       <div className="serial empty-state">
         <Icon name="usb" size={20} />
-        <b>Board is offline</b>
-        <span>Plug it back in or check the cable. Output resumes as soon as it reconnects.</span>
+        <b>{t("Board is offline")}</b>
+        <span>{t("Plug it back in or check the cable. Output resumes as soon as it reconnects.")}</span>
       </div>
     );
   }
@@ -211,16 +212,16 @@ function SerialEmpty({ board }: { board: Board }) {
   return (
     <div className="serial empty-state">
       <Icon name="terminal" size={20} />
-      <b>No output yet</b>
-      <span>Firmware that is already running prints nothing new until something happens. Reset the board to see its boot log.</span>
+      <b>{t("No output yet")}</b>
+      <span>{t("Firmware that is already running prints nothing new until something happens. Reset the board to see its boot log.")}</span>
       {board.link === "usb_otg" && (
-        <span className="faint">This board is connected through the chip's own USB-OTG port: logs appear only if the firmware uses the USB CDC console.</span>
+        <span className="faint">{t("This board is connected through the chip's own USB-OTG port: logs appear only if the firmware uses the USB CDC console.")}</span>
       )}
       <button className="btn sm" onClick={() => void reset()} disabled={state === "resetting" || ownerBusy}
-              title={ownerBusy ? "The session using this board is working; reset it when the session is idle" : "Pulse the reset line (EN). The firmware restarts."}>
-        <Icon name="power" size={13} className={state === "resetting" ? "spin" : ""} />{state === "resetting" ? "Resetting…" : "Reset board"}
+              title={ownerBusy ? t("The session using this board is working; reset it when the session is idle") : t("Pulse the reset line (EN). The firmware restarts.")}>
+        <Icon name="power" size={13} className={state === "resetting" ? "spin" : ""} />{state === "resetting" ? t("Resetting…") : t("Reset board")}
       </button>
-      {state && state !== "resetting" && <span className="err">{state}</span>}
+      {state && state !== "resetting" && <span className="err">{tc(state)}</span>}
     </div>
   );
 }
@@ -229,7 +230,7 @@ function CrashMini({ ev }: { ev: DeviceEvent }) {
   const user = (ev.backtrace?.frames ?? []).filter((f) => !f.internal).slice(0, 3);
   return (
     <div className="crash">
-      <div className="hd"><Icon name="flame" size={14} />Last crash · {ev.detail?.exception ?? ev.kind}</div>
+      <div className="hd"><Icon name="flame" size={14} />{t("Last crash")} · {ev.detail?.exception ?? ev.kind}</div>
       <div className="bd">
         <div style={{ fontSize: 12.5 }}>{ev.summary}</div>
         {user.length > 0 && (
@@ -256,7 +257,7 @@ function SerialView({ lines, follow }: { lines: string[]; follow: boolean }) {
   }, [shown, follow]);
   return (
     <div className="serial" ref={ref}>
-      {shown.length === 0 && <span className="empty-term">(no output yet)</span>}
+      {shown.length === 0 && <span className="empty-term">{t("(no output yet)")}</span>}
       {shown.map((l, i) => {
         // eslint-disable-next-line no-control-regex -- ANSI 颜色码
         const clean = l.replace(/\x1b\[[0-9;]*m/g, "");
@@ -269,19 +270,19 @@ function SerialView({ lines, follow }: { lines: string[]; follow: boolean }) {
 }
 
 const EV_TEXT: Record<string, string> = {
-  boot: "boot", panic: "panic", abort: "abort", assert: "assert", stack_overflow: "stack ovf", stack_smash: "stack smash",
-  wdt_reset: "watchdog", brownout: "brownout", reboot_loop: "boot loop", download_mode: "download", marker: "marker",
-  disconnect: "unplugged", reconnect: "replugged",
+  boot: tk("boot"), panic: tk("panic"), abort: tk("abort"), assert: tk("assert"), stack_overflow: tk("stack ovf"), stack_smash: tk("stack smash"),
+  wdt_reset: tk("watchdog"), brownout: tk("brownout"), reboot_loop: tk("boot loop"), download_mode: tk("download"), marker: tk("marker"),
+  disconnect: tk("unplugged"), reconnect: tk("replugged"),
 };
 
 function EventList({ events }: { events: DeviceEvent[] }) {
-  if (events.length === 0) return <div className="evt-list"><div className="empty" style={{ padding: 10 }}>No events yet</div></div>;
+  if (events.length === 0) return <div className="evt-list"><div className="empty" style={{ padding: 10 }}>{t("No events yet")}</div></div>;
   return (
     <div className="evt-list">
       {[...events].reverse().slice(0, 80).map((e) => (
-        <div key={e.id} className={`evt ${e.severity}`} title={new Date(e.at).toLocaleString("en-US", { hour12: false })}>
-          <span className="k">{EV_TEXT[e.kind] ?? e.kind}</span>
-          <span className="s">{e.summary}</span>
+        <div key={e.id} className={`evt ${e.severity}`} title={new Date(e.at).toLocaleString(locale(), { hour12: false })}>
+          <span className="k">{EV_TEXT[e.kind] ? t(EV_TEXT[e.kind]) : e.kind}</span>
+          <span className="s">{tc(e.summary)}</span>
         </div>
       ))}
     </div>
@@ -316,20 +317,20 @@ function SizePanel({ sid }: { sid: string }) {
   return (
     <div className="card sizebar">
       <div className="section-title">
-        Firmware size
+        {t("Firmware size")}
         <span className="spacer" />
-        <button className="btn ghost xs icon-only" onClick={refresh} disabled={busy} title="Refresh (idf.py size)">
+        <button className="btn ghost xs icon-only" onClick={refresh} disabled={busy} title={t("Refresh (idf.py size)")}>
           <Icon name="refresh" size={12} className={busy ? "spin" : ""} />
         </button>
       </div>
       {!size ? (
-        <div className="empty">Shown after a successful build</div>
+        <div className="empty">{t("Shown after a successful build")}</div>
       ) : (
         <>
-          <Bar label="Flash" used={size.app_bin_size} total={size.app_partition_size} note="app / partition" />
+          <Bar label="Flash" used={size.app_bin_size} total={size.app_partition_size} note={t("app / partition")} />
           <FlashDelta now={size.app_bin_size} flashed={size.flashed} />
           <Bar label="IRAM" used={size.iram_used} total={size.iram_total} />
-          <Bar label={size.ram_label === "内部RAM" ? "Internal RAM" : size.ram_label ?? "DRAM"} used={size.dram_used} total={size.dram_total} />
+          <Bar label={size.ram_label === "内部RAM" ? t("Internal RAM") : size.ram_label ?? "DRAM"} used={size.dram_used} total={size.dram_total} />
         </>
       )}
     </div>
@@ -340,11 +341,11 @@ function SizePanel({ sid }: { sid: string }) {
 function FlashDelta({ now, flashed }: { now?: number; flashed?: { appBinSize: number; turn: number; source: string } | null }) {
   if (now == null || !flashed) return null;
   const d = now - flashed.appBinSize;
-  const when = flashed.source === "restore" ? "the firmware restored from a checkpoint" : `the firmware flashed in turn ${flashed.turn}`;
+  const when = flashed.source === "restore" ? t("the firmware restored from a checkpoint") : t("the firmware flashed in turn {n}", { n: flashed.turn });
   const abs = Math.abs(d);
-  const text = d === 0 ? "same size as on the board" : `${d > 0 ? "+" : "−"}${abs < 1024 ? `${abs} B` : fmtBytes(abs)} vs. the board`;
+  const text = d === 0 ? t("same size as on the board") : t("{delta} vs. the board", { delta: `${d > 0 ? "+" : "−"}${abs < 1024 ? `${abs} B` : fmtBytes(abs)}` });
   return (
-    <div className={`size-delta ${d > 0 ? "up" : d < 0 ? "down" : ""}`} title={`Current build: ${fmtBytes(now)} · on the board (${when}): ${fmtBytes(flashed.appBinSize)}`}>
+    <div className={`size-delta ${d > 0 ? "up" : d < 0 ? "down" : ""}`} title={t("Current build: {now} · on the board ({when}): {flashed}", { now: fmtBytes(now), when, flashed: fmtBytes(flashed.appBinSize) })}>
       {text}
     </div>
   );
@@ -368,9 +369,9 @@ function SimControls() {
   const [present, setPresent] = useState(true);
   return (
     <div className="sim-box">
-      <Icon name="cpu" size={14} /><span style={{ flex: 1 }}>Simulated board</span>
-      <button className="btn xs" onClick={() => void simCrash()}>Crash it</button>
-      <button className="btn xs" onClick={() => { void simPlug(!present); setPresent(!present); }}>{present ? "Unplug" : "Plug in"}</button>
+      <Icon name="cpu" size={14} /><span style={{ flex: 1 }}>{t("Simulated board")}</span>
+      <button className="btn xs" onClick={() => void simCrash()}>{t("Crash it")}</button>
+      <button className="btn xs" onClick={() => { void simPlug(!present); setPresent(!present); }}>{present ? t("Unplug") : t("Plug in")}</button>
     </div>
   );
 }

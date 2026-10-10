@@ -10,6 +10,7 @@ import { SettingsPage } from "./components/Settings";
 import { SetupPage } from "./components/Setup";
 import { Sidebar } from "./components/Sidebar";
 import { ago, baseName } from "./components/util";
+import { t, tc, tk, useLang } from "./i18n";
 import { useStore } from "./store";
 
 export function App() {
@@ -21,6 +22,7 @@ export function App() {
   const notices = useStore((s) => s.notices);
   const devicesOpen = useStore((s) => s.devicesOpen);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
+  useLang(); // 切换语言时整棵树重新渲染
   const toasts = useMemo(() => notices.filter((n) => !n.dismissed && n.sessionId !== current).slice(-2), [notices, current]);
   const [err, setErr] = useState("");
 
@@ -69,9 +71,9 @@ export function App() {
 }
 
 const FEATURES: [string, string, string][] = [
-  ["bolt", "Device in the loop", "Builds, flashes and reads the serial port to verify every change."],
-  ["branch", "Isolated sessions", "Each session works in its own git worktree, with checkpoints per turn."],
-  ["shield", "You stay in control", "Edits and risky hardware operations ask first; eFuse writes never run."],
+  ["bolt", tk("Device in the loop"), tk("Builds, flashes and reads the serial port to verify every change.")],
+  ["branch", tk("Isolated sessions"), tk("Each session works in its own git worktree, with checkpoints per turn.")],
+  ["shield", tk("You stay in control"), tk("Edits and risky hardware operations ask first; eFuse writes never run.")],
 ];
 
 function Welcome({ err }: { err: string }) {
@@ -90,30 +92,30 @@ function Welcome({ err }: { err: string }) {
       <div className="hero">
         <Logo size={44} />
         <h1>Firmwright</h1>
-        <div className="tag">An agent console for embedded development. Keep writing code in your own editor; here you watch the agent work, approve what it does, and keep an eye on your boards.</div>
+        <div className="tag">{t("An agent console for embedded development. Keep writing code in your own editor; here you watch the agent work, approve what it does, and keep an eye on your boards.")}</div>
         <button className="btn primary" style={{ marginTop: 8, height: 36, padding: "0 16px" }} onClick={() => useStore.setState({ showNewSession: true })}>
-          <Icon name="plus" size={15} />New session <span className="kbd">Ctrl N</span>
+          <Icon name="plus" size={15} />{t("New session")} <span className="kbd">Ctrl N</span>
         </button>
       </div>
       {!connected && (
         <div className={`callout ${err ? "error" : "info"}`}>
           <Icon name={err ? "alert" : "refresh"} className={err ? "" : "spin"} />
-          <div>{err ? `Could not connect to the core: ${err}` : "Starting the core…"}</div>
+          <div>{err ? t("Could not connect to the core: {err}", { err }) : t("Starting the core…")}</div>
         </div>
       )}
-      {bootErrors.map((e) => <div key={e} className="callout error"><Icon name="alert" /><div>{e}</div></div>)}
+      {bootErrors.map((e) => <div key={e} className="callout error"><Icon name="alert" /><div>{tc(e)}</div></div>)}
       {connected && needsSetup(fwr?.idf, models.length) && (
         <div className="callout warn">
           <Icon name="alert" />
           <div style={{ flex: 1 }}>
-            {!fwr?.idf?.active ? "ESP-IDF was not found" : "No models yet"}. Finish the setup to start a session.
+            {!fwr?.idf?.active ? t("ESP-IDF was not found. Finish the setup to start a session.") : t("No models yet. Finish the setup to start a session.")}
           </div>
-          <button className="btn sm primary" onClick={() => useStore.setState({ showSetup: true, showSettings: false, showNewSession: false })}>Finish setup</button>
+          <button className="btn sm primary" onClick={() => useStore.setState({ showSetup: true, showSettings: false, showNewSession: false })}>{t("Finish setup")}</button>
         </div>
       )}
       {recent.length > 0 && (
         <div className="recent">
-          <div className="hd">Recent sessions</div>
+          <div className="hd">{t("Recent sessions")}</div>
           {recent.map((s) => (
             <button key={s.id} onClick={() => void selectSession(s.id)}>
               <Icon name="folder" size={14} className="faint" />
@@ -126,16 +128,16 @@ function Welcome({ err }: { err: string }) {
       {recent.length === 0 && (
         <div className="cards">
           {FEATURES.map(([icon, title, text]) => (
-            <div className="card" key={title}><b><Icon name={icon as "bolt"} size={14} />{title}</b>{text}</div>
+            <div className="card" key={title}><b><Icon name={icon as "bolt"} size={14} />{t(title)}</b>{t(text)}</div>
           ))}
         </div>
       )}
       {connected && (
         <div className="core-status">
-          <span><span className="dot ok" />Core v{fwr?.version}</span>
-          <span title={fwr?.idf?.active?.path}><Icon name="cpu" size={13} />{fwr?.idf?.active ? `ESP-IDF v${fwr.idf.active.version ?? "?"}` : "ESP-IDF not found"}</span>
-          <span><Icon name="usb" size={13} />{Object.keys(boards).length} board{Object.keys(boards).length === 1 ? "" : "s"}</span>
-          <span title={fwr?.home}><Icon name="folder" size={13} />{sessions.length} sessions · {models.length} models</span>
+          <span><span className="dot ok" />{t("Core v{version}", { version: fwr?.version })}</span>
+          <span title={fwr?.idf?.active?.path}><Icon name="cpu" size={13} />{fwr?.idf?.active ? `ESP-IDF v${fwr.idf.active.version ?? "?"}` : t("ESP-IDF not found")}</span>
+          <span><Icon name="usb" size={13} />{t(Object.keys(boards).length === 1 ? "{n} board" : "{n} boards", { n: Object.keys(boards).length })}</span>
+          <span title={fwr?.home}><Icon name="folder" size={13} />{t("{s} sessions · {m} models", { s: sessions.length, m: models.length })}</span>
         </div>
       )}
     </div>

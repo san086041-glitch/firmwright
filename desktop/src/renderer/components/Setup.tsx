@@ -13,14 +13,16 @@ import {
   type IdfCandidate,
   type SetupStatus,
 } from "../actions";
+import { t, tc, tk, tx } from "../i18n";
 import { native } from "../rpc";
 import { useStore } from "../store";
 import { Icon, Logo } from "./Icon";
+import { docUrl, LangSwitch } from "./LangSwitch";
 import { EMPTY, ModelForm } from "./Settings";
 
 const IDF_GUIDE = "https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/get-started/windows-setup.html";
 const SERIAL_GUIDE = "https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/get-started/establish-serial-connection.html";
-const SOURCE_TEXT: Record<string, string> = { eim: "Installation Manager", legacy: "ESP-IDF installer", folder: "folder" };
+const SOURCE_TEXT: Record<string, string> = { eim: tk("Installation Manager"), legacy: tk("ESP-IDF installer"), folder: tk("folder") };
 
 export function SetupPage() {
   const models = useStore((s) => s.models);
@@ -49,31 +51,32 @@ export function SetupPage() {
       <div className="start-inner setup">
         <div className="start-head">
           <Logo size={28} />
-          <h2>Set up Firmwright</h2>
+          <h2>{t("Set up Firmwright")}</h2>
           <span className="spacer" />
-          <button className="btn ghost sm" onClick={() => close(false)}>{ready ? "Close" : "Skip for now"}</button>
+          <LangSwitch compact />
+          <button className="btn ghost sm" onClick={() => close(false)}>{ready ? t("Close") : t("Skip for now")}</button>
         </div>
-        <div className="note">Two things are required before the first session, and a board is recommended. Everything here can be changed later in Settings.</div>
-        {err && <div className="callout error"><Icon name="alert" /><div>{err}</div></div>}
+        <div className="note">{t("Two things are required before the first session, and a board is recommended. Everything here can be changed later in Settings.")}</div>
+        {err && <div className="callout error"><Icon name="alert" /><div>{tc(err)}</div></div>}
 
         <ol className="setup-steps">
           <Step n={1} title="ESP-IDF" done={idfOk} summary={st?.idf.active ? `v${st.idf.active.version ?? "?"} · ${st.idf.active.path}` : undefined}>
-            {st ? <IdfStep st={st} onChanged={setSt} /> : <div className="hint"><Icon name="refresh" size={13} className="spin" /> Looking for ESP-IDF…</div>}
+            {st ? <IdfStep st={st} onChanged={setSt} /> : <div className="hint"><Icon name="refresh" size={13} className="spin" /> {t("Looking for ESP-IDF…")}</div>}
           </Step>
-          <Step n={2} title="Model" done={models.length > 0}
-                summary={models.length ? `${models.length} model${models.length > 1 ? "s" : ""} · ${models.map((m) => m.id).join(", ")}` : undefined}>
+          <Step n={2} title={t("Model")} done={models.length > 0}
+                summary={models.length ? `${t(models.length > 1 ? "{n} models" : "{n} model", { n: models.length })} · ${models.map((m) => m.id).join(", ")}` : undefined}>
             <ModelStep />
           </Step>
-          <Step n={3} title="Board" optional done={idfOk && boardCount > 0}>
+          <Step n={3} title={t("Board")} optional done={idfOk && boardCount > 0}>
             <BoardStep idfOk={idfOk} />
           </Step>
         </ol>
 
         <div className="setup-foot">
-          <span className="hint">{ready ? "All set." : !idfOk ? "ESP-IDF is still missing." : "Add a model to continue."}</span>
+          <span className="hint">{ready ? t("All set.") : !idfOk ? t("ESP-IDF is still missing.") : t("Add a model to continue.")}</span>
           <span className="spacer" />
           <button className="btn primary" disabled={!ready} onClick={() => close(true)}>
-            <Icon name="plus" size={15} />Start the first session
+            <Icon name="plus" size={15} />{t("Start the first session")}
           </button>
         </div>
       </div>
@@ -88,7 +91,7 @@ function Step({ n, title, done, optional, summary, children }:
       <div className="step-hd">
         <span className="num">{done ? <Icon name="check" size={13} /> : n}</span>
         <b>{title}</b>
-        {optional && <span className="chip">optional</span>}
+        {optional && <span className="chip">{t("optional")}</span>}
         {summary && <span className="sum ellipsis" title={summary}>{summary}</span>}
       </div>
       <div className="step-bd">{children}</div>
@@ -122,13 +125,13 @@ export function IdfStep({ st, onChanged }: { st: SetupStatus; onChanged: (s: Set
     }
   };
   const browse = async () => {
-    const dir = await native.pickFolder();
+    const dir = await native.pickFolder(t("Choose the ESP-IDF folder"));
     if (!dir) return;
     setErr("");
     try {
       const found = await inspectIdfFolder(dir);
       if (found.length === 1 && !found[0].id) {  // 文件夹里没有 IDF：报错，不当成一个候选列出来
-        setErr(found[0].problem ?? `No ESP-IDF found in ${dir}`);
+        setErr(found[0].problem ?? `No ESP-IDF found in ${dir}`); // 显示时 tc()
         setBrowsed(null);
       } else {
         setBrowsed(found);
@@ -145,20 +148,20 @@ export function IdfStep({ st, onChanged }: { st: SetupStatus; onChanged: (s: Set
         <div className="check-list">
           <div className="check-line ok">
             <Icon name="check" />
-            <div>ESP-IDF <b>v{active.version ?? "?"}</b> <span className="faint">via {SOURCE_TEXT[active.source] ?? active.source}</span>
+            <div>ESP-IDF <b>v{active.version ?? "?"}</b> <span className="faint">{t("via {source}", { source: SOURCE_TEXT[active.source] ? t(SOURCE_TEXT[active.source]) : active.source })}</span>
               <div className="mono faint small">{active.path}</div>
             </div>
           </div>
-          {active.warning && <div className="check-line warn"><Icon name="alert" /><div>{active.warning}</div></div>}
+          {active.warning && <div className="check-line warn"><Icon name="alert" /><div>{tc(active.warning)}</div></div>}
         </div>
       ) : (
         <div className="callout warn">
           <Icon name="alert" />
           <div>
-            <div>Firmwright needs ESP-IDF (v5.5) to build, flash and decode crashes.
-              {list.length > 0 ? " Pick an installation below." : <> If it is not installed yet, install it with Espressif's Installation Manager (EIM), then come back here. <a href={IDF_GUIDE} target="_blank" rel="noreferrer">Installation guide <Icon name="external" size={12} /></a></>}
+            <div>{t("Firmwright needs ESP-IDF (v5.5) to build, flash and decode crashes.")}
+              {list.length > 0 ? ` ${t("Pick an installation below.")}` : <> {t("If it is not installed yet, install it with Espressif's Installation Manager (EIM), then come back here.")} <a href={docUrl(IDF_GUIDE)} target="_blank" rel="noreferrer">{t("Installation guide")} <Icon name="external" size={12} /></a></>}
             </div>
-            {st.idf.error && <div className="small faint">{st.idf.error}</div>}
+            {st.idf.error && <div className="small faint">{tc(st.idf.error)}</div>}
           </div>
         </div>
       )}
@@ -166,7 +169,7 @@ export function IdfStep({ st, onChanged }: { st: SetupStatus; onChanged: (s: Set
         <div className="callout info">
           <Icon name="info" />
           <div className="restart-row">
-            <span>Saved. The core switches to this installation after a restart; open sessions are reloaded.</span>
+            <span>{t("Saved. The core switches to this installation after a restart; open sessions are reloaded.")}</span>
             <RestartButton />
           </div>
         </div>
@@ -176,38 +179,38 @@ export function IdfStep({ st, onChanged }: { st: SetupStatus; onChanged: (s: Set
         <>
           {list.length > 0 && (
             <div className="idf-list">
-              {browsed && <div className="hint">In the folder you picked:</div>}
-              {!browsed && <div className="hint">Found on this computer:</div>}
+              {browsed && <div className="hint">{t("In the folder you picked:")}</div>}
+              {!browsed && <div className="hint">{t("Found on this computer:")}</div>}
               {list.map((c) => (
                 <div key={c.source + c.path} className={`idf-row ${c.problem ? "bad" : ""}`}>
                   <Icon name={c.problem ? "alert" : "cpu"} size={16} />
                   <div className="main">
-                    <div><b>{c.version ? `ESP-IDF v${c.version}` : "ESP-IDF"}</b> <span className="faint">· {SOURCE_TEXT[c.source]}</span>
-                      {same(c) && <span className="chip ok" style={{ marginLeft: 6 }}>in use</span>}</div>
+                    <div><b>{c.version ? `ESP-IDF v${c.version}` : "ESP-IDF"}</b> <span className="faint">· {t(SOURCE_TEXT[c.source] ?? c.source)}</span>
+                      {same(c) && <span className="chip ok" style={{ marginLeft: 6 }}>{t("in use")}</span>}</div>
                     <div className="mono faint small ellipsis" title={c.path}>{c.path}</div>
-                    {c.problem && <div className="small bad-text">{c.problem}</div>}
-                    {!c.problem && c.warning && <div className="small warn-text">{c.warning}</div>}
+                    {c.problem && <div className="small bad-text">{tc(c.problem)}</div>}
+                    {!c.problem && c.warning && <div className="small warn-text">{tc(c.warning)}</div>}
                   </div>
                   <button className="btn sm" disabled={!!c.problem || !!busy || same(c)} onClick={() => void use(c)}>
-                    {busy === c.path ? <Icon name="refresh" size={13} className="spin" /> : null}Use this
+                    {busy === c.path ? <Icon name="refresh" size={13} className="spin" /> : null}{t("Use this")}
                   </button>
                 </div>
               ))}
             </div>
           )}
           <div className="row-acts">
-            <button className="btn sm" onClick={() => void browse()}><Icon name="folder" size={13} />Choose the ESP-IDF folder…</button>
-            {active && <button className="btn sm ghost" onClick={() => { setPicking(false); setBrowsed(null); }}>Cancel</button>}
+            <button className="btn sm" onClick={() => void browse()}><Icon name="folder" size={13} />{t("Choose the ESP-IDF folder…")}</button>
+            {active && <button className="btn sm ghost" onClick={() => { setPicking(false); setBrowsed(null); }}>{t("Cancel")}</button>}
             <span className="spacer" />
-            <a className="hint" href={IDF_GUIDE} target="_blank" rel="noreferrer">How to install ESP-IDF <Icon name="external" size={11} /></a>
+            <a className="hint" href={docUrl(IDF_GUIDE)} target="_blank" rel="noreferrer">{t("How to install ESP-IDF")} <Icon name="external" size={11} /></a>
           </div>
         </>
       ) : (
         <div className="row-acts">
-          <button className="btn sm ghost" onClick={() => setPicking(true)}>Use a different installation</button>
+          <button className="btn sm ghost" onClick={() => setPicking(true)}>{t("Use a different installation")}</button>
         </div>
       )}
-      {err && <div className="callout error"><Icon name="alert" /><div>{err}</div></div>}
+      {err && <div className="callout error"><Icon name="alert" /><div>{tc(err)}</div></div>}
     </div>
   );
 }
@@ -227,15 +230,15 @@ function ModelStep() {
           {models.map((m) => (
             <div key={m.id} className="check-line ok">
               <Icon name="check" />
-              <div><b>{m.id}</b> {m.id === defaultModel && <span className="chip ok">default</span>}</div>
+              <div><b>{m.id}</b> {m.id === defaultModel && <span className="chip ok">{t("default")}</span>}</div>
             </div>
           ))}
         </div>
       )}
-      {models.length === 0 && !adding && <div className="note">Firmwright works with any OpenAI-compatible API that supports tool calling.</div>}
+      {models.length === 0 && !adding && <div className="note">{t("Firmwright works with any OpenAI-compatible API that supports tool calling.")}</div>}
       {adding
         ? <ModelForm draft={{ ...EMPTY }} isNew onDone={done} />
-        : <div className="row-acts"><button className={`btn sm ${models.length ? "ghost" : "primary"}`} onClick={() => setAdding(true)}><Icon name="plus" size={13} />Add {models.length ? "another" : "a"} model</button></div>}
+        : <div className="row-acts"><button className={`btn sm ${models.length ? "ghost" : "primary"}`} onClick={() => setAdding(true)}><Icon name="plus" size={13} />{models.length ? t("Add another model") : t("Add a model")}</button></div>}
     </div>
   );
 }
@@ -249,7 +252,7 @@ function BoardStep({ idfOk }: { idfOk: boolean }) {
   const list = Object.values(boards).filter((b) => b.state !== "disconnected");
 
   if (!idfOk || !devicesAvailable) {
-    return <div className="note">Board detection starts once ESP-IDF is set up.</div>;
+    return <div className="note">{t("Board detection starts once ESP-IDF is set up.")}</div>;
   }
   const rescan = async () => {
     setScanning(true);
@@ -262,25 +265,25 @@ function BoardStep({ idfOk }: { idfOk: boolean }) {
           {list.map((b) => (
             <div key={b.id} className="check-line ok">
               <Icon name="usb" />
-              <div><b>{b.alias}</b> <span className="faint">· {b.chip ?? "chip not identified yet"} · {b.port}</span></div>
+              <div><b>{b.alias}</b> <span className="faint">· {b.chip ?? t("chip not identified yet")} · {b.port}</span></div>
             </div>
           ))}
         </div>
       ) : (
         <div className="board-tips">
-          <div className="waiting"><Icon name="usb" size={16} />No board connected. Plug one in; it shows up here automatically.</div>
+          <div className="waiting"><Icon name="usb" size={16} />{t("No board connected. Plug one in; it shows up here automatically.")}</div>
           <ul>
-            <li>Use a USB <b>data</b> cable; some cables only carry power.</li>
-            <li>On chips with a built-in USB port (ESP32-S3, C3, C6, H2, P4), connect to the port marked <b>USB</b>: it needs no driver.</li>
-            <li>Boards with a USB-to-UART chip (CP210x, CH340, FTDI) may need the vendor's driver.
-              {" "}<a href={SERIAL_GUIDE} target="_blank" rel="noreferrer">Serial connection guide <Icon name="external" size={11} /></a></li>
+            <li>{tx("Use a USB {data} cable; some cables only carry power.", { data: <b>{t("data")}</b> })}</li>
+            <li>{tx("On chips with a built-in USB port (ESP32-S3, C3, C6, H2, P4), connect to the port marked {usb}: it needs no driver.", { usb: <b>USB</b> })}</li>
+            <li>{t("Boards with a USB-to-UART chip (CP210x, CH340, FTDI) may need the vendor's driver.")}
+              {" "}<a href={docUrl(SERIAL_GUIDE)} target="_blank" rel="noreferrer">{t("Serial connection guide")} <Icon name="external" size={11} /></a></li>
           </ul>
-          <div className="note">You can also skip this: sessions without a board can still edit and build.</div>
+          <div className="note">{t("You can also skip this: sessions without a board can still edit and build.")}</div>
         </div>
       )}
       <div className="row-acts">
         <button className="btn sm ghost" onClick={() => void rescan()} disabled={scanning}>
-          <Icon name="refresh" size={13} className={scanning ? "spin" : ""} />Rescan
+          <Icon name="refresh" size={13} className={scanning ? "spin" : ""} />{t("Rescan")}
         </button>
       </div>
     </div>
@@ -288,7 +291,7 @@ function BoardStep({ idfOk }: { idfOk: boolean }) {
 }
 
 /** 重启核心（换 ESP-IDF、改 MCP 服务器后）。有会话在执行时核心会拒绝并说明是哪些会话 */
-export function RestartButton({ label = "Restart core now" }: { label?: string }) {
+export function RestartButton({ label }: { label?: string }) {
   const connected = useStore((s) => s.connected);
   const [state, setState] = useState<"" | "restarting" | string>("");
   const sawDown = useRef(false);
@@ -311,9 +314,9 @@ export function RestartButton({ label = "Restart core now" }: { label?: string }
   return (
     <span className="restart-btn">
       <button className="btn sm" disabled={state === "restarting"} onClick={() => void go()}>
-        <Icon name="refresh" size={13} className={state === "restarting" ? "spin" : ""} />{state === "restarting" ? "Restarting…" : label}
+        <Icon name="refresh" size={13} className={state === "restarting" ? "spin" : ""} />{state === "restarting" ? t("Restarting…") : label ?? t("Restart core now")}
       </button>
-      {state && state !== "restarting" && <span className="small bad-text">{state}</span>}
+      {state && state !== "restarting" && <span className="small bad-text">{tc(state)}</span>}
     </span>
   );
 }

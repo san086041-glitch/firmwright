@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { compactSession, contextInfo } from "../actions";
 import type { Json } from "../rpc";
+import { t, tc, tk } from "../i18n";
 import { useStore } from "../store";
 import { Icon } from "./Icon";
 import { fmtK } from "./util";
@@ -18,12 +19,12 @@ export function ContextMeter({ sid }: { sid: string }) {
   return (
     <span className="ctx-wrap" ref={wrap}>
       <button className={`ctx-meter ${cls}`} onClick={() => setOpen(!open)}
-              title={ctx ? `Context: ${fmtK(ctx.used)} / ${fmtK(ctx.window)} tokens (compacts automatically above 80%)` : "Context, skills, memory, MCP"}>
+              title={ctx ? t("Context: {used} / {window} tokens (compacts automatically above 80%)", { used: fmtK(ctx.used), window: fmtK(ctx.window) }) : t("Context, skills, memory, MCP")}>
         <svg className="ring" viewBox="0 0 16 16">
           <circle className="bg" cx="8" cy="8" r="6.5" />
           <circle className="fg" cx="8" cy="8" r="6.5" strokeDasharray={`${((pct ?? 0) / 100) * c} ${c}`} />
         </svg>
-        {pct == null ? "Context" : pct === 0 && ctx && ctx.used > 0 ? "<1%" : `${pct}%`}
+        {pct == null ? t("Context") : pct === 0 && ctx && ctx.used > 0 ? "<1%" : `${pct}%`}
       </button>
       {open && <ContextPanel sid={sid} busy={status !== "idle"} onClose={() => setOpen(false)} />}
     </span>
@@ -47,7 +48,7 @@ export function useOutside(ref: React.RefObject<HTMLElement | null>, active: boo
   }, [ref, active, close]);
 }
 
-const SCOPE: Record<string, string> = { builtin: "built-in", user: "user", project: "project" };
+const SCOPE: Record<string, string> = { builtin: tk("built-in"), user: tk("user"), project: tk("project") };
 
 function ContextPanel({ sid, busy, onClose }: { sid: string; busy: boolean; onClose: () => void }) {
   const [info, setInfo] = useState<Json | null>(null);
@@ -73,50 +74,50 @@ function ContextPanel({ sid, busy, onClose }: { sid: string; busy: boolean; onCl
   };
   const pct = info?.window ? Math.min(100, Math.round((info.used / info.window) * 100)) : 0;
   return (
-    <div className="popover ctx-pop" role="dialog" aria-label="Context">
-      <div className="hd"><b>Context</b><span className="spacer" /><button className="btn ghost sm icon-only" onClick={onClose} aria-label="Close"><Icon name="x" size={14} /></button></div>
-      {!info ? <div className="hint">{err || "Loading…"}</div> : (
+    <div className="popover ctx-pop" role="dialog" aria-label={t("Context")}>
+      <div className="hd"><b>{t("Context")}</b><span className="spacer" /><button className="btn ghost sm icon-only" onClick={onClose} aria-label={t("Close")}><Icon name="x" size={14} /></button></div>
+      {!info ? <div className="hint">{err ? tc(err) : t("Loading…")}</div> : (
         <>
           <div className="usage-bar"><span style={{ width: `${pct}%` }} /></div>
-          <div className="muted">~{fmtK(info.used)} of {fmtK(info.window)} tokens · {info.messages} messages · {info.tools} tools</div>
+          <div className="muted">{t("~{used} of {window} tokens · {messages} messages · {tools} tools", { used: fmtK(info.used), window: fmtK(info.window), messages: info.messages, tools: info.tools })}</div>
           <div className="compact-row">
-            <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What to keep when compacting (optional)" />
+            <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("What to keep when compacting (optional)")} />
             <button className="btn sm" disabled={busy || working} onClick={() => void compact()}
-                    title={busy ? "The session is running; wait for it to finish" : "Summarize the earlier conversation and archive the original"}>
-              <Icon name="layers" size={13} />{working ? "Compacting…" : "Compact now"}
+                    title={busy ? t("The session is running; wait for it to finish") : t("Summarize the earlier conversation and archive the original")}>
+              <Icon name="layers" size={13} />{working ? t("Compacting…") : t("Compact now")}
             </button>
           </div>
-          {err && <div className="err">{err}</div>}
-          {info.compactionDir && <div className="hint">Archive: <code>{info.compactionDir}</code></div>}
+          {err && <div className="err">{tc(err)}</div>}
+          {info.compactionDir && <div className="hint">{t("Archive:")} <code>{info.compactionDir}</code></div>}
 
-          <div className="sec">Skills · {info.skills.length}</div>
-          {info.skills.length === 0 ? <div className="hint">No skills available{info.features?.context_skills === false ? " (context.skills is off)" : ""}</div> : (
+          <div className="sec">{t("Skills")} · {info.skills.length}</div>
+          {info.skills.length === 0 ? <div className="hint">{info.features?.context_skills === false ? t("No skills available (context.skills is off)") : t("No skills available")}</div> : (
             <ul className="list">
               {info.skills.map((s: Json) => (
                 <li key={s.name} title={s.path}>
-                  <b>{s.name}</b> <span className="chip" style={{ height: 18, fontSize: 11 }}>{SCOPE[s.scope] ?? s.scope}</span>
-                  {s.loaded && <> <span className="chip ok" style={{ height: 18, fontSize: 11 }}>loaded</span></>}
+                  <b>{s.name}</b> <span className="chip" style={{ height: 18, fontSize: 11 }}>{SCOPE[s.scope] ? t(SCOPE[s.scope]) : s.scope}</span>
+                  {s.loaded && <> <span className="chip ok" style={{ height: 18, fontSize: 11 }}>{t("loaded")}</span></>}
                   <div className="d">{s.description}</div>
                 </li>
               ))}
             </ul>
           )}
 
-          <div className="sec">Memory</div>
-          {!info.memory ? <div className="hint">Memory is off (context.memory)</div> : (
+          <div className="sec">{t("Memory")}</div>
+          {!info.memory ? <div className="hint">{t("Memory is off (context.memory)")}</div> : (
             <>
               <div className="hint"><code>{info.memory.root}</code></div>
-              <pre className="mem">{info.memory.index || "Nothing remembered yet. Tell the agent \"remember …\", or it will record stable facts with remember."}</pre>
+              <pre className="mem">{info.memory.index || t("Nothing remembered yet. Tell the agent \"remember …\", or it will record stable facts with remember.")}</pre>
             </>
           )}
 
-          <div className="sec">MCP servers</div>
-          {info.mcp.length === 0 ? <div className="hint">None configured ([mcp.servers.&lt;name&gt;] in config.toml)</div> : (
+          <div className="sec">{t("MCP servers")}</div>
+          {info.mcp.length === 0 ? <div className="hint">{t("None configured ([mcp.servers.<name>] in config.toml)")}</div> : (
             <ul className="list">
               {info.mcp.map((m: Json) => (
                 <li key={m.name} className="row">
                   <span className={`dot ${m.alive ? "ok" : "crashed"}`} /> <b>{m.name}</b>
-                  <span className="muted">{m.alive ? `${m.tools} tools${m.server ? ` · ${m.server}` : ""}` : `offline: ${m.error ?? ""}`}</span>
+                  <span className="muted">{m.alive ? `${t("{n} tools", { n: m.tools })}${m.server ? ` · ${m.server}` : ""}` : `${t("offline:")} ${tc(m.error ?? "")}`}</span>
                 </li>
               ))}
             </ul>

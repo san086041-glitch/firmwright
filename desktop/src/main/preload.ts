@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld("fwr", {
     return () => ipcRenderer.removeListener("host:event", h);
   },
   logs: () => ipcRenderer.invoke("host:logs"),
-  pickFolder: () => ipcRenderer.invoke("native:pickFolder"),
+  pickFolder: (title?: string) => ipcRenderer.invoke("native:pickFolder", title),
   notify: (opts: { title: string; body: string; tag?: string }) => ipcRenderer.invoke("native:notify", opts),
   openPath: (p: string) => ipcRenderer.invoke("native:openPath", p),
   showItem: (p: string) => ipcRenderer.invoke("native:showItem", p),

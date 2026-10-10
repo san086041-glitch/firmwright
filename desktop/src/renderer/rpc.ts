@@ -2,6 +2,7 @@
  * 渲染进程里的 JSON-RPC（ACP）客户端。
  * 传输层两种：Electron（preload 暴露的 window.fwr）或开发用的 WebSocket 桥。
  */
+import { t } from "./i18n";
 
 export type Json = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -11,7 +12,7 @@ interface NativeApi {
   onMessage(cb: (msg: Json) => void): () => void;
   onHostEvent(cb: (ev: Json) => void): () => void;
   logs(): Promise<string[]>;
-  pickFolder(): Promise<string | null>;
+  pickFolder(title?: string): Promise<string | null>;
   notify(opts: { title: string; body: string; tag?: string }): Promise<boolean>;
   openPath(p: string): Promise<string>;
   showItem(p: string): Promise<void>;
@@ -133,9 +134,9 @@ export const rpc = new RpcClient();
 
 // 原生能力：Electron 里走主进程，浏览器里降级
 export const native = {
-  async pickFolder(): Promise<string | null> {
-    if (window.fwr) return window.fwr.pickFolder();
-    return window.prompt("Full path of the project folder (no folder picker in browser mode)");
+  async pickFolder(title?: string): Promise<string | null> {
+    if (window.fwr) return window.fwr.pickFolder(title ?? t("Choose a project folder"));
+    return window.prompt(t("Full path of the folder (no folder picker in browser mode)"));
   },
   async notify(title: string, body: string, tag?: string): Promise<void> {
     if (window.fwr) {
@@ -156,12 +157,12 @@ export const native = {
   /** 用资源管理器打开文件夹 / 用默认程序打开文件（浏览器模式下只能把路径告诉用户） */
   async openPath(p: string): Promise<void> {
     if (window.fwr) await window.fwr.openPath(p);
-    else window.prompt("Location (Explorer cannot be opened in browser mode)", p);
+    else window.prompt(t("Location (Explorer cannot be opened in browser mode)"), p);
   },
   /** 调用栈的 file:line：VS Code 跳到那一行，没有就用默认程序打开（浏览器模式下只能把位置告诉用户） */
   async openInEditor(file: string, line?: number): Promise<string> {
     if (window.fwr?.openInEditor) return window.fwr.openInEditor(file, line);
-    window.prompt("Source location (no editor in browser mode)", line ? `${file}:${line}` : file);
+    window.prompt(t("Source location (no editor in browser mode)"), line ? `${file}:${line}` : file);
     return "browser";
   },
   async hostInfo(): Promise<HostInfo | null> {
@@ -175,6 +176,6 @@ export const native = {
   },
   async showItem(p: string): Promise<void> {
     if (window.fwr) await window.fwr.showItem(p);
-    else window.prompt("File location (Explorer cannot be opened in browser mode)", p);
+    else window.prompt(t("File location (Explorer cannot be opened in browser mode)"), p);
   },
 };
